@@ -2,6 +2,12 @@ name: Build APK and macOS DMG
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: Packages to build (Android-only does not publish a release)
+        required: true
+        default: all
+        type: choice
+        options: [all, android]
       tag:
         description: Preview release tag
         required: true
@@ -55,6 +61,7 @@ jobs:
           name: android-package
           path: dist/*
   macos:
+    if: inputs.platform != 'android'
     needs: checks
     runs-on: macos-15
     steps:
