@@ -1,34 +1,34 @@
-# Apple bridge verification notes
+# Apple 桥接实现与验证说明
 
-Implemented against the app's `docs/BRIDGE_CONTRACT.md`, targeting iOS 15 and macOS 12. Flutter channels are `cloud_music/control` and `cloud_music/events`.
+按照应用的 `docs/BRIDGE_CONTRACT.md` 实现，目标平台为 iOS 15 和 macOS 12。Flutter 通道为 `cloud_music/control` 和 `cloud_music/events`。
 
-## Storage and access
+## 存储与访问
 
-- System directory picker opens the original folder, without importing/copying songs.
-- iOS uses minimal bookmarks; macOS uses read-only security-scoped bookmarks. Successful security-scope starts are balanced and scope stays alive during preparation/playback.
-- The only persisted file is the app-owned Application Support/CloudMusic/library.json (bookmark, metadata, preferences). No audio is persisted by this code.
-- Background coordinated listings use `.immediatelyAvailableMetadataOnly` (not `.withoutChanges`); symlink directories are not traversed. Startup retains missing entries. Refresh removes references only after a successful parent listing plus a direct Cocoa not-found result. Errors/cloud placeholders retain old entries. Known-offline ubiquitous roots cannot establish deletion.
-- iCloud downloads are system-managed and still use device storage. Cancel stops waiting and invalidates pending player operations, but does not delete/cancel Apple's cached download.
-- Provider coordination itself may block. Concurrent background work and generation tokens let new playback/source requests proceed without accepting stale results.
+- 系统目录选择器打开原始文件夹，不导入或复制歌曲。
+- iOS 使用最小书签，macOS 使用只读安全作用域书签。成功开启安全作用域的调用都有对应的停止调用，准备和播放期间保持作用域有效。
+- 唯一持久化文件是应用自有的 Application Support/CloudMusic/library.json，保存书签、元数据和偏好设置；此实现不持久化音频。
+- 后台协调枚举使用 `.immediatelyAvailableMetadataOnly`，而非 `.withoutChanges`，且不遍历符号链接目录。启动时保留缺失条目。刷新时，只有父目录枚举成功并且直接得到 Cocoa 文件不存在的结果后，才移除引用。发生错误或遇到云端占位文件时保留原条目。已知离线的 iCloud 根目录不能用于确认删除。
+- iCloud 下载由系统管理，仍会占用设备存储。取消操作会停止等待，并使待处理的播放器操作失效，但不会删除或取消 Apple 的缓存下载。
+- 文件提供器协调本身可能阻塞。并发后台任务和代次令牌允许新的播放或来源请求继续执行，同时拒绝过期结果。
 
-## Playback
+## 播放
 
-AVPlayer uses original URLs with a file presenter for external writes/moves/deletions. Metadata and bounded artwork are loaded only for selected songs. Queue controls, shuffle, repeat, seek, volume, iOS background audio, interruption/route handling and system media commands are implemented. Decode failures are not treated as file deletions.
+AVPlayer 使用原始 URL，并通过文件呈现器处理外部写入、移动和删除。仅为选中的歌曲加载元数据和有大小限制的封面。已实现队列控制、随机播放、循环播放、进度跳转、音量、iOS 后台音频、中断/音频路由处理及系统媒体命令。解码失败不会被视为文件已删除。
 
-## Packaging
+## 打包
 
-SwiftPM processes PrivacyInfo.xcprivacy; CocoaPods includes it as a resource bundle. This implementation does not use UserDefaults, file timestamps, disk-space APIs or other required-reason APIs; the manifest declares no collected data or tracking. Reassess if additional SDKs/APIs are added. macOS Runner has app sandbox, user-selected read-only and app-scoped bookmark entitlements. iOS Runner has audio background mode, with no app-owned iCloud container entitlement.
+SwiftPM 处理 PrivacyInfo.xcprivacy，CocoaPods 将其作为资源包包含。此实现不使用 UserDefaults、文件时间戳、磁盘空间 API 或其他需要声明使用理由的 API；隐私清单声明不收集数据，也不进行追踪。如新增 SDK 或 API，须重新评估。macOS Runner 具有应用沙盒、用户所选文件只读访问和应用作用域书签授权。iOS Runner 启用了后台音频模式，未申请应用自有 iCloud 容器授权。
 
-## Verification status
+## 验证状态
 
-Static source review and XML/plist parsing completed in Linux. No Swift compiler, Apple SDK, Xcode, code signing or physical device was available in this workspace. This is **not yet a verified Apple build**. Run hosted macOS CI and then the complete device matrix in `docs/REQUIREMENTS.md`, particularly third-party provider/offline enumeration, stale/revoked grants, externally renamed playing files, interruption during download, cancellation/reselection and real iCloud placeholder behavior. A successful unsigned CI build cannot establish signed iCloud access or audio-route correctness.
+已在 Linux 中完成静态源码审查和 XML/plist 解析。该工作区没有 Swift 编译器、Apple SDK、Xcode、代码签名环境或真机，因此**尚未验证 Apple 平台构建**。需运行托管 macOS CI，再执行 `docs/REQUIREMENTS.md` 中完整的设备测试矩阵，特别关注第三方文件提供器和离线枚举、过期或撤销的授权、正在播放的文件被外部重命名、下载期间中断、取消/重新选择，以及真实 iCloud 占位文件行为。未签名 CI 构建成功，不能证明签名后的 iCloud 访问或音频路由正确。
 
-Known boundaries: artwork larger than 2 MB is omitted; no crossfade/equalizer; paused files retain their grant until playback/source replacement; bookmarks/index are local to this app installation, not synced across devices. No downloaded binary is code-signed or notarized by this source alone.
+已知限制：超过 2 MB 的封面会被忽略；不支持交叉淡入淡出或均衡器；暂停的文件保留授权，直到播放或来源被替换；书签和索引仅属于当前应用安装，不跨设备同步。仅凭本源码无法保证下载的二进制文件已完成代码签名或公证。
 
-## Coordination correction and deletion safeguards
+## 文件协调修正与删除防护
 
-Apple explicitly documents [immediatelyAvailableMetadataOnly](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/immediatelyavailablemetadataonly) as avoiding download/materialization. [withoutChanges](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/withoutchanges) only suppresses presenter-save requests and must not be used as a substitute. All indexing, absence checks and download-status polling now use the former, clear cached URL metadata, and register their coordinator with the operation's cancellation token. Explicit iCloud download initiation is separate from metadata-only coordination; A separate selected-song-only normal coordinated read intentionally permits provider materialization (important for non-iCloud providers). AVPlayer still reads the coordinator-provided original URL with the registered presenter; the preparation deadline cancels this coordinator too.
+Apple 明确说明，[立即可用的纯元数据读取选项 immediatelyAvailableMetadataOnly](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/immediatelyavailablemetadataonly) 可避免触发下载或将文件内容实体化。[不作更改选项 withoutChanges](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/withoutchanges) 仅抑制向文件呈现器发出的保存请求，不能用作替代。所有索引、缺失检查和下载状态轮询现均使用前者，清除缓存的 URL 元数据，并将协调器注册到操作的取消令牌。显式发起 iCloud 下载与纯元数据协调相互独立；针对所选歌曲，另行执行普通协调读取，有意允许文件提供器将内容实体化，这对非 iCloud 提供器尤为重要。AVPlayer 仍通过已注册的文件呈现器读取协调器提供的原始 URL；准备超时时也会取消该协调器。
 
-Cancellation calls [NSFileCoordinator.cancel](https://developer.apple.com/documentation/foundation/nsfilecoordinator/cancel()), and a 15-second per-coordination timer cancels presenter waits. Independent main-thread deadlines end playback preparation after 90 seconds and scans after 180 seconds, retain the old index, and ignore late completions. Apple documents that cancellation cannot abort an already-executing accessor. A stuck provider syscall may therefore retain a background worker/scope until it returns, but cannot keep the UI loading indefinitely or install a stale player. The application does not claim to forcibly interrupt arbitrary OS provider calls.
+取消时调用 [NSFileCoordinator.cancel 取消方法](https://developer.apple.com/documentation/foundation/nsfilecoordinator/cancel())，每次协调还设置 15 秒定时器，以取消对文件呈现器的等待。主线程上的独立超时机制会在 90 秒后结束播放准备、180 秒后结束扫描，保留旧索引并忽略延迟完成结果。Apple 文档指出，取消无法中止已经执行中的访问闭包。因此，卡住的文件提供器系统调用可能会一直占用后台工作线程和安全作用域，直到调用返回；但不会让界面无限加载，也不会安装过期播放器。应用不承诺强制中断任意操作系统文件提供器调用。
 
-Refresh now persists/checks source volume UUID, uses macOS bookmark resolution without remounting, compares root identity before/after scanning, re-lists an unchanged nonempty parent before confirming an absent child, and refuses pruning on unknown identity, unavailable network, remote volume, any uncertain ancestor or unexpectedly empty subtree. Network loss during a scan discards pending reconciliation. This deliberately retains a final removed song when its formerly populated subtree becomes completely empty; that case is indistinguishable from an incomplete provider view at this layer. Reselecting the folder rebuilds the list explicitly. Legacy indexes first learn volume identity without pruning. Provider/device tests are still required.
+刷新现会持久化并检查来源卷 UUID，在 macOS 上以不重新挂载卷的方式解析书签，比较扫描前后的根目录标识，并在确认子项缺失前重新枚举未发生变化且非空的父目录。遇到标识未知、网络不可用、远程卷、任何祖先目录状态不确定或子树意外为空时，拒绝清理索引。扫描期间断网会丢弃待执行的索引核对结果。若原本有内容的子树因最后一首歌被删除而变为空，此策略会有意保留该歌曲条目，因为在这一层无法将其与文件提供器视图不完整的情况区分。重新选择文件夹会明确重建列表。旧索引首次只补充卷标识，不执行清理。仍需进行文件提供器和设备测试。

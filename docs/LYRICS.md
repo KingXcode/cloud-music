@@ -1,47 +1,47 @@
-# Lyrics: optional download and offline display
+# 歌词：可选下载与离线显示
 
-## Usage
+## 使用方法
 
-Open the full player and tap the top-right **查看歌词** icon, or scroll to **歌词** in either player layout.
+打开完整播放器，点击右上角的**查看歌词**图标，或在任一播放器布局中滚动到**歌词**区域。
 
-- **搜索下载** opens an editable title/artist/album form. Only **同意并搜索** sends a request. Playback, opening the player, typing, canceling and library scans never query a lyrics service.
-- Check the returned artist, album, duration and synchronized/plain/instrumental label. Tap the correct version to download it into this app's local cache. There is no automatic selection or replacement; a >2-second duration difference is flagged.
-- UTF-8 **.lrc / .txt import** and **paste** work without the online provider. Importing replaces only this app's lyrics for that track, never the original file.
-- Synchronized LRC follows playback and highlights the current line. Tap a line to seek, or disable follow to browse. Plain lyrics remain scrollable; instrumental records explicitly say there are no lyrics.
-- No match, invalid metadata, rate limits, connectivity/CORS problems and storage failures have distinct recovery guidance. Search failure retains previously saved lyrics.
+- **搜索下载**会打开可编辑的标题、歌手和专辑表单。只有点击**同意并搜索**才会发送请求。播放、打开播放器、输入、取消和扫描音乐库均不会查询歌词服务。
+- 核对返回的歌手、专辑、时长，以及同步歌词、纯文本歌词或纯音乐标记。点击正确版本后，将其下载到本应用的本地缓存。应用不会自动选择或替换歌词，时长差异超过 2 秒时会提示。
+- UTF-8 **.lrc / .txt 导入**和**粘贴**无需在线服务即可使用。导入仅替换本应用中该歌曲的歌词，不修改原始文件。
+- 同步 LRC 会跟随播放进度并高亮当前行。点击某行可跳转播放，也可关闭跟随以自由浏览。纯文本歌词可滚动查看，纯音乐记录会明确显示没有歌词。
+- 无匹配结果、无效元数据、限流、网络或 CORS 问题、存储失败均有各自的恢复指引。搜索失败时保留之前保存的歌词。
 
-Downloaded lyrics are **in-app offline cache**, not sidecar files written next to your music. The cache is bounded to approximately 2 MiB / 100 songs, with the oldest saved items evicted first. Large collections may need re-download; browser storage can be cleared or evicted by the browser. A failed persistence operation is explicitly labeled session-only. Clearing app/site data removes this cache, not source audio. Re-importing a track under a new location/metadata identity can require selecting lyrics again. Apple folder reselection and browser file-input reselection conservatively create a new source identity, so their old cached lyrics require a fresh selection; normal retained-folder refresh and restart preserve identity.
+下载的歌词保存在**应用内离线缓存**中，不会作为伴随文件写入音乐所在目录。缓存上限约为 2 MiB / 100 首歌曲，最早保存的项目优先淘汰。大型音乐库可能需要重新下载歌词；浏览器也可能清理或淘汰存储数据。持久化失败时，会明确标记为仅在当前会话可用。清除应用或站点数据会移除此缓存，不会删除源音频。如果歌曲重新导入后的位置或元数据标识发生变化，可能需要重新选择歌词。重新选择 Apple 文件夹或通过浏览器文件输入重新选择时，应用会保守地创建新来源标识，因此旧缓存歌词需要重新选择；保留原文件夹的常规刷新和重启会保留该标识。
 
-## Privacy and source
+## 隐私与数据来源
 
-The only provider is HTTPS `lrclib.net`, using its public `/api/search` endpoint. Each user-confirmed search sends **only the entered title, artist and nonempty album**. It does not send duration, local file paths, folder names, audio, artwork or the library index. LRCLIB necessarily receives the connection's IP address and client identification. Browser fetch omits credentials and referrer; both adapters reject redirects. The project does not proxy requests or retain server-side search history.
+唯一的在线服务为通过 HTTPS 访问的 `lrclib.net`，使用其公开 `/api/search` 接口。每次经用户确认的搜索**仅发送填写的标题、歌手及非空专辑**，不发送时长、本地文件路径、文件夹名称、音频、封面或音乐库索引。LRCLIB 必然会接收到连接的 IP 地址和客户端标识。浏览器 fetch 请求不携带凭据和来源页信息，两种适配器均拒绝重定向。本项目不代理请求，也不在服务端保存搜索历史。
 
-Cached lyrics and a local track identity are kept in app-private storage on native platforms and origin-local browser storage on Web. This is ordinary local storage, not encrypted secret storage. No API key or account is required. Imports read only the explicitly chosen file; no automatic directory scan or embedded-lyrics extraction is implemented.
+缓存歌词和本地歌曲标识在原生平台保存在应用私有存储中，在 Web 端保存在当前源的浏览器本地存储中。这是普通本地存储，并非加密的机密存储。无需 API 密钥或账号。导入时仅读取用户明确选中的文件，未实现自动扫描目录或提取内嵌歌词。
 
-### Provider contract and rights review
+### 服务接口约定与版权审查
 
-Primary references checked for this implementation:
+实现时已核对以下一手资料：
 
-- [LRCLIB official API documentation](https://lrclib.net/docs.txt): structured search, at most 20 records, nullable synced/plain lyrics and instrumental marker, CORS, client identification, rate limits and Retry-After.
-- [LRCLIB source repository](https://github.com/tranxuanthang/lrclib): MIT license covers server software. It does **not** establish copyright permission for the underlying lyrics.
-- [Official LRCGET client](https://github.com/tranxuanthang/lrcget): local lyrics downloading is an intended API use, but this is not a blanket content-rights license.
+- [LRCLIB 官方 API 文档](https://lrclib.net/docs.txt)：结构化搜索、最多 20 条记录、可空的同步/纯文本歌词与纯音乐标记、CORS、客户端标识、限流及 Retry-After。
+- [LRCLIB 源码仓库](https://github.com/tranxuanthang/lrclib)：MIT 许可证适用于服务端软件，**不代表**其中歌词已获得版权授权。
+- [LRCGET 官方客户端](https://github.com/tranxuanthang/lrcget)：下载歌词到本地是 API 的预期用途之一，但这不等同于对内容版权的全面授权。
 
-No authoritative blanket lyrics-content license or applicable full provider terms/privacy policy was verified. Do not advertise the catalog as rights-cleared. The UI attributes LRCLIB, explains possible inaccuracies, and asks users to download only when permitted. Commercial redistribution or app-store distribution requires a separate content-rights/terms review. No lyrics corpus or copyrighted song fixture is included in this repository; tests use invented text.
+尚未核实具有权威性的、覆盖全部歌词内容的授权，或完整适用的服务条款与隐私政策。因此不得宣传该歌词库已完成版权清理。界面会标明 LRCLIB 来源、说明内容可能不准确，并提示用户仅在获准时下载。商业再分发或应用商店分发需要另行审查内容版权与条款。本仓库不包含歌词语料库或受版权保护的歌曲测试数据，测试使用虚构文本。
 
-## Engineering
+## 工程实现
 
-- `lib/lyrics/lyrics_models.dart`: bounded UTF-8/plain/LRC parsing, multiple timestamps, fractional seconds, hour timestamps, metadata, offset and simultaneous-line grouping. Colon fractions such as `[03:24:45]` mean 3:24.45; the hour form requires a decimal fraction, such as `[01:02:03.250]`, to avoid ambiguity. A positive LRC offset advances display relative to audio. Empty cues remain timing boundaries.
-- `lib/lyrics/lyrics_controller.dart`: per-track state, explicit user search, candidate selection, bounded versioned cache, stale-result protection and serialized persistence. Provider errors cannot clear accepted lyrics. No background retries; `429`/`503` respects Retry-After with a conservative fallback when the header cannot be read through CORS.
-- `lib/lyrics/lyrics_native.dart`: HTTPS Dart client, identifiable User-Agent, timeouts, bounded response, native cache/import bridge.
-- `lib/lyrics/lyrics_web.dart`: browser fetch with Lrclib-Client, CORS enforcement, timeout/abort, localStorage and browser file input. No CORS proxy or security bypass.
-- `lib/ui/lyrics_panel.dart`: consent, candidate selection, synchronized highlighting/scroll/seek and offline fallback.
-- Native `cloud_music/control`: `readLyricsCache` -> nullable JSON string; `writeLyricsCache({value: String})` -> null; `importLyrics` -> nullable UTF-8 string (null means cancellation). Cache is atomically replaced in app-owned storage; input limits are 2 MiB cache / 256 KiB imported lyrics.
+- `lib/lyrics/lyrics_models.dart`：带大小限制的 UTF-8、纯文本及 LRC 解析，支持多个时间戳、小数秒、含小时的时间戳、元数据、偏移量和同一时刻的歌词行分组。以冒号分隔的小数秒写法，如 `[03:24:45]`，表示 3:24.45；包含小时的格式必须带小数部分，如 `[01:02:03.250]`，以避免歧义。正的 LRC 偏移量会使歌词相对音频提前显示。空歌词提示仍保留为时间边界。
+- `lib/lyrics/lyrics_controller.dart`：逐歌曲状态、用户主动搜索、候选版本选择、带大小限制和版本号的缓存、过期结果防护及串行持久化。服务错误不能清空已确认的歌词。不进行后台重试；对 `429`/`503` 遵循 Retry-After，因 CORS 无法读取该响应头时采用保守回退策略。
+- `lib/lyrics/lyrics_native.dart`：HTTPS Dart 客户端、可识别的 User-Agent、超时、响应大小限制、原生缓存与导入桥接。
+- `lib/lyrics/lyrics_web.dart`：携带 Lrclib-Client 的浏览器 fetch、遵循 CORS、超时/中止、localStorage 和浏览器文件输入，不使用 CORS 代理或绕过安全限制。
+- `lib/ui/lyrics_panel.dart`：授权确认、候选版本选择、同步高亮/滚动/跳转和离线回退。
+- 原生 `cloud_music/control`：`readLyricsCache` -> 可空 JSON 字符串；`writeLyricsCache({value: String})` -> null；`importLyrics` -> 可空 UTF-8 字符串（null 表示取消）。缓存在应用自有存储中原子替换；输入上限为缓存 2 MiB、导入歌词 256 KiB。
 
-Android INTERNET and macOS client-network entitlements permit the user-initiated HTTPS lookup. Apple file access remains read-only. File picker cancellation, duplicate requests and detach are handled separately from the music picker.
+Android INTERNET 权限和 macOS 客户端网络授权允许用户主动发起 HTTPS 查询。Apple 文件访问仍为只读。歌词文件选择器的取消、重复请求和组件分离独立于音乐选择器处理。
 
-## Verification and remaining device checks
+## 验证情况与待执行的设备检查
 
-Automated parser/controller/widget checks cover invented LRC, offset and duplicate timestamps, plain/instrumental fallback, consent/cancel/back/typing, track-switch races, explicit candidate acceptance, offline persistence, invalid cache, failed writes, rate limits, responsive layouts and seeking. Native parser unit tests cover UTF-8/BOM and limits. Run:
+解析器、控制器和组件自动化检查覆盖虚构 LRC、偏移量和重复时间戳、纯文本/纯音乐回退、同意/取消/返回/输入、切歌竞态、明确确认候选版本、离线持久化、无效缓存、写入失败、限流、自适应布局及进度跳转。原生解析器单元测试覆盖 UTF-8/BOM 和大小限制。执行：
 
 ```sh
 flutter analyze
@@ -50,8 +50,8 @@ node --test test/web/music_gateway_test.cjs
 flutter build web --release --base-href /cloud-music/
 ```
 
-Native test sources are included, but Linux source checks do not prove Android/iOS/macOS compilation or system-picker behavior. Use actual release CI and devices to verify native builds, picker Cancel/reopen, provider cloud-file access and offline restart. Live LRCLIB requests with actual user songs were deliberately not made. A metadata-free OPTIONS preflight confirmed `Access-Control-Allow-Origin: *` and `lrclib-client` in allowed headers for the production origin. Full end-to-end search remains a manual check; use an authorized query and confirm the disclosure before sending.
+仓库包含原生测试源码，但 Linux 源码检查不能证明 Android/iOS/macOS 编译成功或系统选择器行为正确。须通过实际发布 CI 和设备验证原生构建、选择器取消/重新打开、文件提供器的云文件访问及离线重启。当时未使用用户真实歌曲向 LRCLIB 发起在线请求。不包含元数据的 OPTIONS 预检已确认：对于正式站点源，`Access-Control-Allow-Origin: *`，且允许的请求头包含 `lrclib-client`。完整端到端搜索仍需手动检查，发送前应使用已获授权的查询，并确认信息披露说明。
 
-Final source verification in the Linux development workspace: Flutter analyzer and 48 unit/widget tests passed, including colon-fraction timestamp ambiguity, source isolation, consent and stale-result regressions. The existing 27 JavaScript browser-gateway tests, JavaScript syntax check and final Web release build (including Wasm compatibility dry-run) also passed. Visual capture checks passed before the final parser/picker fixes and phone lyrics / landscape player images were inspected.
+Linux 开发工作区中的最终源码验证结果：Flutter 静态分析和 48 项单元/组件测试通过，覆盖冒号分隔小数秒的时间戳歧义、来源隔离、授权确认和过期结果回归。已有的 27 项 JavaScript 浏览器网关测试、JavaScript 语法检查和最终 Web 发布构建（包括 Wasm 兼容性试运行）也已通过。在最后一次解析器/选择器修复前，视觉截图检查已通过，并已检查手机歌词页面和横屏播放器图片。
 
-The new real-browser abandoned-picker regression could compile, but local Chromium could not launch because this workspace blocks its process socket. It is now a required GitHub Actions check for Web deployment and Android builds. Inspect the actual workflow result before treating that check as passed. Native Android parser tests/build and Apple builds/device picker behavior require their respective build/device environments.
+新增的真实浏览器选择器放弃操作回归测试可以编译，但由于工作区限制进程套接字，本地 Chromium 无法启动。该测试现已作为 Web 部署和 Android 构建的必需 GitHub Actions 检查，须查看实际工作流结果后才能认定通过。原生 Android 解析器测试与构建、Apple 平台构建及设备选择器行为，仍需要在各自的构建或设备环境中验证。

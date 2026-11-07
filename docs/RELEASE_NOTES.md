@@ -1,14 +1,14 @@
-## Cloud Music preview
+## 云听预览版
 
-Original-file folder music player with a library, persistent mini-player and dedicated now-playing screen.
+直接播放文件夹中原始音频的音乐播放器，提供音乐库、常驻迷你播放器和独立的正在播放页面。
 
-- Android: select local or USB folders with the system picker; permission is persisted when the provider supports it. The APK uses standard debug/test signing, not a production signing identity. Future builds may require uninstalling this preview before installation.
-- macOS: select a folder, including iCloud Drive, with scoped bookmark access. The DMG is unsigned and the app is not Developer ID signed/notarized. A local ad-hoc signature may be present. See macos-architectures.txt for actual build architectures.
-- Web: local playback without uploading audio. Supported browsers can remember a directory handle; browsers without that capability ask for a folder when needed. Access permission can expire or be revoked.
-- iOS/iPadOS source is included. No signed iOS install package is supplied.
+- Android：通过系统选择器选择本地或 USB 文件夹，文件提供器支持时会持久保存权限。APK 使用标准调试/测试签名，未使用生产签名身份。后续版本可能需要先卸载此预览版再安装。
+- macOS：通过安全作用域书签访问所选文件夹，包括 iCloud Drive。DMG 未签名，应用未使用 Developer ID 签名，也未经过 Apple 公证；可能带有本地临时签名（ad-hoc）。实际构建架构见 macos-architectures.txt。
+- Web：本地播放，不上传音频。受支持的浏览器可记住目录句柄，不具备该能力的浏览器会在需要时要求选择文件夹。访问权限可能过期或被撤销。
+- 包含 iOS/iPadOS 源码，但不提供已签名的 iOS 安装包。
 
-The application stores folder permission and metadata, not a copied audio library. iCloud/File Provider may download originals into system-managed storage. Refresh never deletes source files. Offline/provider errors and disconnected USB devices are not treated as confirmed deletions.
+应用保存文件夹权限和元数据，不复制整个音频库。iCloud/文件提供器可能将原始文件下载到系统管理的存储中。刷新绝不删除源文件，离线、文件提供器报错和 USB 设备断开都不会被视为已确认删除。
 
-This is a preview, not a device-certified production release. Passing CI establishes compilation, automated tests and package checks; it does not establish real iCloud account access, USB behavior on every head unit, hardware audio output or uninterrupted background playback on all devices. Do not use the UI while driving.
+这是预览版，尚非通过设备验证的正式生产版本。CI 通过表明编译、自动化测试和安装包检查通过，不能证明真实 iCloud 账号访问、每种车机上的 USB 行为、硬件音频输出或所有设备上的连续后台播放均正常。请勿在驾驶时操作界面。
 
-APK and DMG SHA-256 hashes are in SHA256SUMS.txt. Audio format support depends on each platform's codecs.
+APK 和 DMG 的 SHA-256 校验值见 SHA256SUMS.txt。音频格式支持取决于各平台的编解码器。

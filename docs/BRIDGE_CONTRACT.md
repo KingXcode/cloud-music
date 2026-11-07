@@ -1,40 +1,41 @@
-# Shared platform bridge contract
+# 共享平台桥接接口约定
 
-Method channel: `cloud_music/control`. Event channel: `cloud_music/events`.
-All events are complete snapshot maps. All methods may return the current snapshot; Dart ignores mutation return values and consumes events. `initialize` must return a loaded snapshot immediately and then validate existing tracks asynchronously, preserving missing entries on startup. `pickFolder` cancellation retains the previous library. Repeated busy calls must be safe. The Web input fallback completes the picker command after opening the sheet, then publishes a successful selection through snapshot events; callers must not require a selection in the command result. Playback and source changes must invalidate pending asynchronous operations.
+方法通道：`cloud_music/control`。事件通道：`cloud_music/events`。
+所有事件均为完整快照映射。所有方法都可以返回当前快照；Dart 忽略修改操作的返回值，通过事件接收状态。`initialize` 必须立即返回已加载的快照，再异步校验已有歌曲，启动时保留缺失条目。取消 `pickFolder` 时保留原音乐库。忙碌期间重复调用必须安全。Web 输入回退方案在打开选择面板后即完成选择命令，再通过快照事件发布成功选择的结果；调用方不得要求命令返回值中必须包含选择结果。播放和来源变化必须使尚未完成的异步操作失效。
 
-Methods: `initialize`, `pickFolder`, `refresh`, `play` (`id`: string), `togglePlayback`, `pause`, `next`, `previous`, `seek` (`positionMs`: int), `setShuffle` (`enabled`: bool), `setRepeat` (`mode`: `off`/`all`/`one`), `setVolume` (`volume`: double 0–1), `cancelLoading`.
+方法：`initialize`、`pickFolder`、`refresh`、`play`（`id`：字符串）、`togglePlayback`、`pause`、`next`、`previous`、`seek`（`positionMs`：整数）、`setShuffle`（`enabled`：布尔值）、`setRepeat`（`mode`：`off`/`all`/`one`）、`setVolume`（`volume`：0–1 的双精度浮点数）、`cancelLoading`。
 
-Snapshot fields:
-- `folderName`: string or null, `sourceKind`: `apple`, `android` or `web`
-- `selectionMode`: optional `folder` (default) or `files`; the Web adapter uses `files` for iPhone/iPad and browsers without directory selection
-- `tracks`: array of maps, each with `id`: stable string, `title`: string, `artist`: string (empty allowed), `album`: string (empty allowed), `relativePath`: display string, `status`: `ready`/`cloud`/`offline`/`missing`/`unsupported`/`unknown`, `durationMs`: nonnegative int (0 when unknown)
-- `currentTrackId`: string or null
-- `isPlaying`, `isLoading`, `isScanning`, `shuffle`: bool
-- `positionMs`, `durationMs`: nonnegative int
-- `repeatMode`: `off`/`all`/`one`, `volume`: double 0–1
-- `artwork`: optional platform typed bytes (FlutterStandardTypedData / byte[]) for current track; keep it reasonably sized
-- `message`: string or null. Human-readable Chinese preferred; actionable/recoverable problems surfaced here.
+快照字段：
 
-Defaults: false booleans, 0 times, volume 1, repeat off, empty track list.
+- `folderName`：字符串或 null；`sourceKind`：`apple`、`android` 或 `web`
+- `selectionMode`：可选，值为 `folder`（默认）或 `files`；Web 适配器在 iPhone/iPad 及不支持目录选择的浏览器中使用 `files`
+- `tracks`：映射数组，每项包含 `id`：稳定的字符串标识；`title`：字符串；`artist`：字符串（允许为空）；`album`：字符串（允许为空）；`relativePath`：用于显示的字符串；`status`：`ready`/`cloud`/`offline`/`missing`/`unsupported`/`unknown`；`durationMs`：非负整数（未知时为 0）
+- `currentTrackId`：字符串或 null
+- `isPlaying`、`isLoading`、`isScanning`、`shuffle`：布尔值
+- `positionMs`、`durationMs`：非负整数
+- `repeatMode`：`off`/`all`/`one`；`volume`：0–1 的双精度浮点数
+- `artwork`：可选，当前歌曲的平台类型化字节数据（FlutterStandardTypedData / byte[]），应控制在合理大小
+- `message`：字符串或 null。优先使用易懂的中文，在此显示用户可处理或可恢复的问题。
 
-Only persist metadata, bookmark/tree URI and preferences, never audio. Root selection is explicit; never delete/move/write/copy source files. Startup validates and marks; explicit refresh discovers new songs and removes confirmed-missing references. Unmounted USB, permission errors, iCloud placeholders/offline and incomplete scans are not deletion evidence. Child directories with errors retain their old entries. A root folder error retains all old entries. Initial selection scans recursively. Use audio MIME/type/extension for discovery, then player errors for codec validation, without deleting unsupported entries.
+默认值：布尔值为 false，时间为 0，音量为 1，循环模式关闭，歌曲列表为空。
+
+仅持久化元数据、书签/目录树 URI 和偏好设置，不保存音频。根目录由用户明确选择；绝不删除、移动、写入或复制源文件。启动时进行校验和标记；手动刷新时发现新歌曲，并移除已确认缺失的索引条目。USB 未挂载、权限错误、iCloud 占位文件或离线、扫描不完整均不能作为删除证据。子目录报错时保留该目录的原有条目，根目录报错时保留全部原有条目。首次选择时递归扫描，依据音频 MIME、类型或扩展名发现候选文件，再通过播放器错误验证编解码支持，不删除不支持的条目。
 
 
-## Optional lyrics bridge (0.2)
+## 可选歌词桥接（0.2）
 
-Snapshots also expose `sourceIdentity`: a persisted opaque Apple root UUID,
-Android tree URI, or browser root UUID. It is used only for local cache isolation,
-never sent to the lyrics provider. Distinct same-named folders must not share it.
-Apple folder reselection and browser file-input reselection create a new identity.
+快照还提供 `sourceIdentity`：持久化的不透明来源标识，具体为 Apple 根目录 UUID、
+Android 目录树 URI 或浏览器根目录 UUID。该标识仅用于隔离本地缓存，
+不会发送给歌词服务。名称相同但实际不同的文件夹不得共用该标识。
+重新选择 Apple 文件夹或通过浏览器文件输入重新选择时，会创建新标识。
 
-Native `cloud_music/control` additionally supports:
+原生 `cloud_music/control` 额外支持：
 
-- `readLyricsCache` (no arguments) -> nullable UTF-8 JSON string.
-- `writeLyricsCache` (`value`: string) -> null. Atomic app-owned write, max 2 MiB.
-- `importLyrics` (no arguments) -> selected UTF-8 LRC/TXT string, or null on cancel.
-  Max 256 KiB. No write/delete permission to the selected original is requested.
+- `readLyricsCache`（无参数）-> 可空的 UTF-8 JSON 字符串。
+- `writeLyricsCache`（`value`：字符串）-> null。在应用自有存储中原子写入，最大 2 MiB。
+- `importLyrics`（无参数）-> 所选 UTF-8 LRC/TXT 字符串，取消时返回 null。
+  最大 256 KiB，不申请所选原始文件的写入或删除权限。
 
-These return their own values rather than a library snapshot. Errors are
-`lyrics_error`, `invalid_arguments`, `picker_busy` or `no_activity`.
-See [LYRICS.md](LYRICS.md) for the explicit-consent provider flow and limits.
+这些方法返回各自的结果，不返回音乐库快照。错误码包括
+`lyrics_error`、`invalid_arguments`、`picker_busy` 或 `no_activity`。
+需用户明确同意的歌词服务流程及限制见[歌词文档](LYRICS.md)。

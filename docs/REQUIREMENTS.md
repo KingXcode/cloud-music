@@ -1,58 +1,58 @@
-# Cloud Music: implementation brief
+# 云听：实现需求说明
 
-Working title only. Flutter is confirmed by the user. Android local/USB access and Web playback are included.
+项目名称为暂定名称。用户已确认使用 Flutter，范围包含 Android 本地/USB 访问和 Web 播放。
 
-## Requested experience
+## 预期使用体验
 
-- iPhone, iPad and macOS music player.
-- At first use, select a folder in iCloud Drive using Apple's system folder picker.
-- Remember the permission using a security-scoped folder bookmark. Do not import/copy audio into the app sandbox.
-- List supported audio candidates recursively. Tapping a row starts that exact track.
-- On launch, verify previously indexed tracks and mark unavailable/missing references without silently deleting the list.
-- Manual Refresh rescans, adds newly discovered tracks and removes confirmed-missing references only. Never remove source files.
-- Keep cloud placeholders, download failures, offline files, permission failures and incomplete scans distinct from deleted files.
-- Persistent bottom mini-player opens a dedicated now-playing screen: artwork, title/artist, playback progress/seeking, previous/next, play/pause, shuffle and repeat.
-- Responsive iPhone, iPad and Mac layouts.
-- Future vehicle target is a normal Android head unit installing an APK, not Android Auto. Plan for landscape and large touch targets, with an independent Android file source. Direct Android iCloud access is not promised.
+- 为 iPhone、iPad 和 macOS 提供音乐播放器。
+- 首次使用时，通过 Apple 系统文件夹选择器选择 iCloud Drive 中的文件夹。
+- 使用带安全作用域的文件夹书签记住权限，不将音频导入或复制到应用沙盒。
+- 递归列出支持的候选音频，点击某一行即播放对应歌曲。
+- 启动时校验之前索引的歌曲，标记不可用或缺失的条目，不静默删除列表。
+- 手动刷新会重新扫描、加入新发现的歌曲，并且只移除已确认缺失的索引条目，绝不删除源文件。
+- 将云端占位文件、下载失败、离线文件、权限失败和扫描不完整与文件已删除的情况区分开。
+- 底部常驻迷你播放器，点击后打开独立的正在播放页面，包含封面、标题/歌手、播放进度与跳转、上一首/下一首、播放/暂停、随机和循环播放。
+- 适配 iPhone、iPad 和 Mac 的不同布局。
+- 后续车载目标为可安装 APK 的普通 Android 车机，不是 Android Auto。需考虑横屏和大触控区域，并使用独立的 Android 文件来源；不承诺 Android 可直接访问 iCloud。
 
-## Proposed portable architecture
+## 可移植架构方案
 
-A Flutter presentation layer can use a typed library/playback gateway. The Apple gateway owns folder picking, bookmark persistence, security scope lifetimes, coordinated scanning, iCloud download preparation and AVFoundation playback. A future Android implementation replaces that gateway instead of trying to reinterpret an Apple bookmark.
+Flutter 界面层可通过带类型约束的音乐库/播放网关访问平台能力。Apple 网关负责文件夹选择、书签持久化、安全作用域生命周期、协调扫描、iCloud 下载准备和 AVFoundation 播放。后续 Android 实现通过替换网关接入自身能力，不尝试复用 Apple 书签的含义。
 
-Only index metadata, bookmark credentials and preferences belong in application support. User songs remain at their selected URLs. iCloud downloads use Apple's managed storage and therefore still consume device disk space.
+应用支持目录仅保存索引元数据、书签凭据和偏好设置。用户歌曲保留在所选的原始 URL。iCloud 下载使用 Apple 管理的存储，因此仍会占用设备磁盘空间。
 
-## Conservative refresh policy
+## 保守刷新策略
 
-1. Resolve the folder bookmark and renew it if stale.
-2. Acquire scoped access before scanning. If permission or folder access fails, retain the complete prior list and offer re-selection.
-3. Enumerate with coordinated metadata-only reads on a background queue; recognize undownloaded placeholders without forcing every song to download.
-4. Record coverage and errors per parent directory. A failed/incomplete directory does not prove any previous child was deleted.
-5. Preserve existing tracks with transient, cloud-only, download or codec errors. Mark their availability separately.
-6. Only treat an old path as missing after a successful coordinated parent listing and an explicit not-found check, with no known cloud/provider uncertainty affecting that parent.
-7. On startup, mark missing entries. On explicit Refresh, remove only those confirmed-missing entries from the index.
-8. Reconcile playback if the current reference disappears. Never call delete, move, copy or write APIs on the source folder.
+1. 解析文件夹书签，发现过期时更新。
+2. 扫描前取得安全作用域访问权限。权限或文件夹访问失败时，完整保留原列表，并提供重新选择入口。
+3. 在后台队列中使用经过文件协调的纯元数据读取进行枚举，识别尚未下载的占位文件，不强制下载每首歌曲。
+4. 按父目录记录扫描覆盖情况和错误。目录访问失败或扫描不完整，不能证明其中原有的子项已被删除。
+5. 保留遇到临时错误、仅存云端、下载错误或编解码错误的已有歌曲，单独标记其可用状态。
+6. 只有经过协调的父目录枚举成功、显式检查确认目标不存在，且没有已知的云端或文件提供器不确定因素影响该父目录时，才将旧路径视为缺失。
+7. 启动时仅标记缺失条目；手动刷新时，才从索引中移除已确认缺失的条目。
+8. 当前播放条目消失时同步调整播放状态。绝不对源文件夹调用删除、移动、复制或写入接口。
 
-## Required device checks
+## 必须执行的设备检查
 
-- Pick iCloud folder, nested folder, Unicode filenames and duplicate basenames.
-- Cancel initial picker; cancel replacement picker; change folder while playing.
-- Relaunch app and reboot device; renew stale bookmark; revoke access and reselect.
-- Tap track B while track A is still downloading; only B may become active.
-- Download cloud-only song; show waiting/error and allow cancellation.
-- Offline launch/refresh must not clear a populated library.
-- Incomplete listing and provider error must retain affected entries.
-- Move/rename/delete song externally during playback and between launches.
-- Startup marks missing; explicit refresh removes references but does not delete songs.
-- Unsupported/damaged audio remains distinguishable from missing source.
-- Background audio, interruption, unplug headphones and route changes on iOS.
-- Full player and mini-player stay synchronized; seek and repeated controls do not produce stale state.
-- iPhone compact width, iPad split screen, wide and narrow Mac window.
-- Confirm application support contains only index/bookmark/settings, not copied audio.
+- 选择 iCloud 文件夹、嵌套文件夹，检查 Unicode 文件名和不同目录中的同名文件。
+- 取消首次选择、取消替换文件夹选择，以及播放中更换文件夹。
+- 重新启动应用和设备，更新过期书签，撤销权限后重新选择。
+- 歌曲 A 仍在下载时点击歌曲 B，最终只能激活 B。
+- 下载仅存云端的歌曲，显示等待或错误状态，并允许取消。
+- 离线启动和刷新不得清空已有音乐库。
+- 枚举不完整或文件提供器报错时，必须保留受影响条目。
+- 在播放期间或两次启动之间，从应用外部移动、重命名、删除歌曲。
+- 启动时标记缺失；手动刷新只移除索引引用，不删除歌曲。
+- 不支持或损坏的音频仍能与源文件缺失区分开。
+- iOS 后台音频、中断、拔出耳机和音频路由变化。
+- 完整播放器与迷你播放器保持同步，进度跳转和连续操作不会产生过期状态。
+- iPhone 窄屏、iPad 分屏、Mac 宽窗口和窄窗口。
+- 确认应用支持目录只包含索引、书签和设置，没有复制的音频。
 
-## Current verification environment
+## 编写时的验证环境
 
-The user's Mac is reported offline. Cloud workspace has Flutter 3.47.5 / Dart 3.13.4, verified using its existing isolated toolchain activation with BOT=true and analytics suppressed. No Xcode or Swift executable is available. Dart/static/widget checks are possible; Apple compilation, code signing, iCloud access and real audio-device tests require a Mac and physical signed-in Apple devices.
+当时用户的 Mac 处于离线状态。云端工作区具备 Flutter 3.47.5 / Dart 3.13.4，已通过其现有隔离工具链激活方式验证，并设置 BOT=true、关闭分析数据上报。环境中没有可用的 Xcode 或 Swift 可执行程序，可以执行 Dart、静态分析和组件检查；Apple 编译、代码签名、iCloud 访问及真实音频设备测试需要 Mac 和已登录账号的 Apple 真机。
 
-## Delivery requested
+## 交付要求
 
-Create a new GitHub repository after visibility is confirmed, publish a test-signed Android APK and unsigned/non-notarized macOS DMG to Releases, and deploy Web to GitHub Pages. Browser should remember the last folder when supported and ask for permission/reselection only when needed. A GitHub-hosted macOS runner can perform Apple compilation even while the local Mac is offline.
+确认仓库可见性后，新建 GitHub 仓库，将测试签名的 Android APK 及未签名、未公证的 macOS DMG 发布到 Releases，并将网页版部署到 GitHub Pages。浏览器在支持时应记住上次选择的文件夹，仅在需要时请求权限或要求重新选择。即使本地 Mac 离线，也可通过 GitHub 托管的 macOS 执行器完成 Apple 平台编译。

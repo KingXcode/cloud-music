@@ -1,44 +1,44 @@
-# Browser playback and privacy
+# 浏览器播放与隐私
 
-The production browser adapter is `lib/gateway/web_music_gateway.dart`, backed by `web/music_gateway.js`. `web/index.html` loads the helper before Flutter. No audio is uploaded, copied into app storage, cached in IndexedDB, or transcoded. The selected original `File` is handed to an HTML audio element by a temporary Blob URL. URLs are revoked on source replacement, cancellation and disposal.
+正式使用的浏览器适配器为 `lib/gateway/web_music_gateway.dart`，底层由 `web/music_gateway.js` 提供支持。`web/index.html` 会在 Flutter 之前加载该辅助脚本。音频不会被上传、复制到应用存储、缓存到 IndexedDB 或转码。所选原始 `File` 通过临时 Blob URL 交给 HTML 音频元素播放，来源替换、取消和释放时会撤销这些 URL。
 
-## Folder persistence
+## 文件夹访问持久化
 
-- Chromium browsers with File System Access support (secure HTTPS / localhost) save the read-only `FileSystemDirectoryHandle` in IndexedDB. Track metadata and player preferences are saved separately in localStorage.
-- Startup returns saved metadata immediately, retrieves the handle, and calls **queryPermission only**. A valid grant restores and scans the original folder without requiring selection again. A prompt/denied grant shows a Chinese action message. Clicking Refresh calls requestPermission in the user gesture and scans when granted.
-- The browser, privacy mode and site-data clearing may prevent persisted grants or storage. If there is no usable saved handle, reselection is needed. A mounted folder handle does not prove that all underlying cloud file bytes are downloaded.
-- iPhone/iPad use a multiple-file input by default. Open the music folder inside the system Files picker and select the audio files. This works around differences between iOS versions and file providers; it is not a claim that every recent iOS browser lacks directory-input support. Browsers without either directory API/input also use this route.
-- Other browsers without the directory picker use `input[webkitdirectory]`. File references live for the tab session only; reload requires reselection. The app does not gain persistent iCloud directory access through either fallback.
-- The fallback command returns immediately after opening the system picker. `change`/`cancel` are handled separately: an absent event can no longer leave the Flutter buttons permanently disabled. Another explicit click replaces an abandoned input; stale results are ignored. Cancel, empty selection and selection without recognized audio preserve the current library/playback. No automatic alternate picker is opened after a security denial.
-- A successful selection updates the library without waiting for IndexedDB; failed/unresponsive storage cannot freeze the file-selection flow. The operating system may first download cloud originals. If the provider returns no files, retry and check availability in the Files app.
+- 支持 File System Access 的 Chromium 浏览器会在安全的 HTTPS / localhost 环境下，将只读 `FileSystemDirectoryHandle` 保存在 IndexedDB。歌曲元数据和播放器偏好另存于 localStorage。
+- 启动时立即返回已保存的元数据、获取句柄，并且**只调用 queryPermission**。授权有效时恢复并扫描原文件夹，无需再次选择。权限待询问或被拒绝时显示中文操作提示。点击刷新会在用户手势内调用 requestPermission，获准后再扫描。
+- 浏览器、隐私模式及站点数据清理可能阻止权限或存储的持久化。没有可用的已保存句柄时，需要重新选择。已挂载的文件夹句柄不能证明底层云文件内容已全部下载。
+- iPhone/iPad 默认使用文件多选输入。请在系统“文件”选择器中打开音乐文件夹，再选择音频文件。这样可规避 iOS 版本和文件提供器之间的差异，并不表示所有新版 iOS 浏览器都不支持目录输入。不支持目录 API 和目录输入的浏览器也使用此方案。
+- 其他没有目录选择器的浏览器使用 `input[webkitdirectory]`。文件引用仅在当前标签页会话中有效，重新加载后需要重新选择。两种回退方案都不会让应用获得持久的 iCloud 目录访问权限。
+- 回退命令在打开系统选择器后立即返回。`change`/`cancel` 事件单独处理，缺失事件不再导致 Flutter 按钮永久禁用。用户再次主动点击时会替换已放弃的输入，过期结果会被忽略。取消、空选择或未选中可识别音频时，保留当前音乐库和播放状态。安全策略拒绝访问后，不会自动打开其他选择器。
+- 选择成功后无需等待 IndexedDB 即可更新音乐库，存储失败或无响应不会卡住文件选择流程。操作系统可能先下载云端原始文件。如果文件提供器未返回文件，请重试，并在“文件”应用中检查其可用性。
 
-## Conservative scanning and playback
+## 保守扫描与播放策略
 
-Only file paths/handles are enumerated during a handle-based scan; audio is read lazily by `getFile()` for the chosen track. A discovered file is marked `unknown` until successful retrieval, not misleadingly cloud-ready/offline. Startup marks corroborated absent paths missing. Explicit refresh removes paths only after error-free enumeration, repeated direct parent lookup returning NotFound, a granted root permission, and successful reopening of another listed sibling in the same parent. Empty folders, absent parent folders, disconnected providers and any enumeration error retain unknown entries, since the browser offers no definitive mount-health API. A playback NotFound alone is unknown, not evidence of deletion. Failed subtrees retain their old entries. A root failure preserves the entire prior library. Decoder errors are retained as unsupported songs rather than deleted.
+基于句柄的扫描只枚举文件路径和句柄，音频在选中歌曲后才通过 `getFile()` 按需读取。发现的文件在成功获取前标记为 `unknown`，避免误标为云端已就绪或离线。启动时将有充分证据表明不存在的路径标记为缺失。手动刷新仅在枚举无错误、反复直接查询父目录均返回 NotFound、根目录权限已授予，且成功重新打开同一父目录中另一个已列出的同级文件后，才移除对应路径。空文件夹、父文件夹缺失、文件提供器断开或任何枚举错误都会保留状态未知的条目，因为浏览器没有能够确切判断挂载健康状况的 API。仅播放时出现 NotFound 应视为状态未知，不能作为删除证据。子树访问失败时保留其原条目，根目录失败时保留整个原音乐库。解码错误会将歌曲保留并标记为不支持，而不是删除。
 
-The browser supports queue advance/previous, seek, volume, repeat one/all/off and shuffle with history. Shuffle visits each eligible song once and stops with repeat off; repeat all begins a fresh cycle; repeat one affects automatic completion only. New play, pause, cancel and dispose invalidate pending file reads. Browser autoplay and codec restrictions remain applicable and are reported to the user. Embedded artist, album and artwork tags are not parsed by this browser adapter; filenames provide titles.
+浏览器支持队列下一首/上一首、进度跳转、音量、单曲循环/列表循环/关闭循环，以及带历史记录的随机播放。随机播放每轮遍历每首符合条件的歌曲一次；关闭循环时遍历结束即停止，列表循环时开始新一轮，单曲循环仅影响歌曲自然播放结束后的行为。新的播放、暂停、取消和释放操作会使尚未完成的文件读取失效。浏览器自动播放和编解码器限制仍然适用，并会向用户报告。本浏览器适配器不解析内嵌歌手、专辑和封面标签，标题取自文件名。
 
-## Validation
+## 验证
 
-`node --test test/web/music_gateway_test.cjs` exercises twenty-five deterministic adapter cases: persisted handle restore without prompts, permission denial, startup/refresh missing references, failed subtree preservation, picker cancellation, cancellation during file retrieval, Blob URL cleanup playback settings, corroborated deletion/provider failure, gesture timing, fallback cancellation, shuffle exhaustion/cycling stale preparation suppression, synchronous picker invocation distinct security-policy errors, iPhone/iPad multiple-file mode, absent picker events/retry, stale selection suppression, duplicate filenames, unsupported-file preservation and unresponsive storage. These use controlled browser API doubles, not real cloud downloads or manual permission dialogs.
+`node --test test/web/music_gateway_test.cjs` 覆盖 25 项确定性的适配器用例，包括：无提示恢复持久句柄、权限拒绝、启动/刷新时处理缺失引用、保留失败子树、取消选择器、获取文件时取消、Blob URL 清理、播放设置、有证据的删除判断与文件提供器失败、用户手势时序、回退选择取消、随机播放遍历结束与循环、抑制过期准备结果、同步调用选择器、区分安全策略错误、iPhone/iPad 文件多选模式、选择器事件缺失与重试、抑制过期选择、重名文件、不支持文件的保留及存储无响应。这些测试使用受控的浏览器 API 替身，不涉及真实云下载或手动权限对话框。
 
-`flutter analyze lib/gateway/web_music_gateway.dart` verifies the Dart JS interop wrapper.
+`flutter analyze lib/gateway/web_music_gateway.dart` 用于验证 Dart 与 JavaScript 互操作封装。
 
-Manual browser acceptance checklist:
+浏览器手动验收清单：
 
-1. Serve the release build at HTTPS or localhost. Choose a folder with two real playable files and nested subfolders. Check playback, previous/next, seeking and volume.
-2. In supported Chromium, grant persistent access if offered; reload and confirm the library restores with no picker. Revoke the grant in browser settings, reload, then click Refresh and grant access.
-3. Cancel a fresh picker and confirm existing songs/current playback remain. On desktop Firefox/Safari confirm the fallback folder selection and honest reselection prompt after reload. On iPhone/iPad confirm “选择音乐文件（可多选）”, open a folder in Files, select multiple real audio files and play them. Dismiss/cancel, retry, select unsupported files and reload: buttons must remain usable, cancellation must preserve songs, and reload must explain reselection. Physical iPhone/iCloud provider verification remains required.
-4. Remove one file and reload: it should appear missing. With a healthy sibling still present, explicit Refresh should remove that entry. If the folder is completely empty, the browser conservatively retains unknown references. Disconnect a whole disk and refresh: retain the library with a warning.
-5. Play a large/cloud-placeholder file, cancel while loading, then select a different track. No stale playback should begin. Confirm unsupported codecs report a recoverable error.
-6. Inspect network/storage: no audio requests to a server, no stored audio blobs, only folder handle plus text metadata/preferences. Browser/OS providers may independently fetch cloud originals outside this app.
+1. 通过 HTTPS 或 localhost 提供发布构建。选择含有两个真实可播放文件及嵌套子文件夹的目录，检查播放、上一首/下一首、进度跳转和音量。
+2. 在受支持的 Chromium 中，若出现持久访问选项则授予权限；重新加载，确认无需打开选择器即可恢复音乐库。在浏览器设置中撤销授权，重新加载，再点击刷新并授权。
+3. 打开新选择器后取消，确认已有歌曲和当前播放状态保留。在桌面 Firefox/Safari 中确认回退文件夹选择，以及重新加载后准确的重新选择提示。在 iPhone/iPad 中确认显示“选择音乐文件（可多选）”，在“文件”中打开文件夹，多选真实音频并播放。关闭/取消、重试、选择不支持的文件和重新加载后，按钮仍须可用，取消必须保留歌曲，重新加载必须说明需要重新选择。仍须执行 iPhone 真机和 iCloud 文件提供器验证。
+4. 删除一个文件后重新加载，应将其显示为缺失。同目录中仍有健康的同级文件时，手动刷新应移除该条目。如果文件夹完全为空，浏览器会保守地保留未知引用。断开整块磁盘后刷新，应保留音乐库并提示警告。
+5. 播放大文件或云端占位文件，加载时取消，再选择另一首歌，不得开始播放过期请求对应的歌曲。确认不支持的编解码格式会报告可恢复错误。
+6. 检查网络和存储：没有发往服务器的音频请求，不保存音频 Blob，仅保存文件夹句柄、文本元数据和偏好。浏览器或操作系统的文件提供器可能在应用之外独立获取云端原始文件。
 
-### Picker diagnostics
+### 选择器诊断
 
-The UI/controller/interop path invokes `showDirectoryPicker` without an earlier await. The adapter tests assert synchronous picker invocation. A `SecurityError` is presented distinctly from `NotAllowedError`: it can reflect missing transient activation, a restricted origin/embedding context or browser policy, and must not be described as the user refusing file permission. Remote/automated browser behavior is not proof of ordinary desktop Chrome behavior. No automatic alternate picker is attempted after a security denial.
+界面、控制器和互操作调用链在调用 `showDirectoryPicker` 前不执行 await。适配器测试会断言选择器调用是同步的。`SecurityError` 与 `NotAllowedError` 分别显示：前者可能表示缺少瞬时用户激活、来源或嵌入上下文受限，或浏览器策略限制，不能描述成用户拒绝文件权限。远程或自动化浏览器的行为不能证明普通桌面 Chrome 中的行为。安全策略拒绝访问后，不会自动尝试其他选择器。
 
-### iPhone grey-button correction (0.1.1)
+### iPhone 按钮变灰修复（0.1.1）
 
-The previous fallback awaited a promise settled only by input `change` or `cancel`. If the browser/provider returned neither event, the controller stayed busy forever, matching the reported disabled main button. The fix removes that dependency and defaults Apple mobile browsers to file multiselect. Automated coverage demonstrates the missing-event recovery and selection lifecycle, not successful interaction with a real iPhone Files sheet or cloud provider.
+此前的回退方案会等待一个仅由输入控件的 `change` 或 `cancel` 事件结束的 Promise。如果浏览器或文件提供器都未返回这两类事件，控制器就会永久处于忙碌状态，与反馈的主按钮禁用现象一致。修复移除了这一依赖，并让 Apple 移动浏览器默认使用文件多选。自动化覆盖验证了事件缺失后的恢复和选择生命周期，不能证明已成功与真实 iPhone“文件”面板或云文件提供器交互。
 
-Relevant platform references: [WebKit iOS directory-input issue](https://bugs.webkit.org/show_bug.cgi?id=271705), [MDN directory inputs](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/webkitdirectory), and [MDN showDirectoryPicker](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker). Recent Safari directory-input improvements do not provide persistent `showDirectoryPicker` permissions.
+相关平台资料：[WebKit iOS 目录输入问题](https://bugs.webkit.org/show_bug.cgi?id=271705)、[MDN 目录输入说明](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/webkitdirectory)、[MDN showDirectoryPicker 说明](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)。近期 Safari 的目录输入改进并未提供持久的 `showDirectoryPicker` 权限。

@@ -1,28 +1,29 @@
-# Android native bridge
+# Android 原生桥接
 
-This is an ordinary Android application/head-unit plugin (minimum API 24), not an Android Auto application. The app uses the Flutter-generated AGP 9.1/Kotlin 2.4 project configuration and JDK 17 bytecode. The release variant currently uses the scaffold debug signing configuration: distribution must call this a test-signed APK, not a production-signed build.
+这是面向普通 Android 应用和车机的插件（最低 API 24），不是 Android Auto 应用。应用使用 Flutter 生成的 AGP 9.1/Kotlin 2.4 工程配置和 JDK 17 字节码。发布变体目前沿用脚手架的调试签名配置，因此分发时必须明确标记为测试签名 APK，不能称为生产签名构建。
 
-## Source access and preservation
+## 源文件访问与保护
 
-`ACTION_OPEN_DOCUMENT_TREE` requests persistent **read-only** permission. The library stores JSON metadata, preferences and original document URIs in SharedPreferences. Audio is opened through a read-only provider file descriptor; the plugin never copies, moves, deletes or writes source audio. Android does not reinterpret an Apple bookmark or provide built-in iCloud access.
+`ACTION_OPEN_DOCUMENT_TREE` 请求持久的**只读**权限。音乐库将 JSON 元数据、偏好设置和原始文档 URI 保存在 SharedPreferences。音频通过文件提供器的只读文件描述符打开，插件绝不复制、移动、删除或写入源音频。Android 不复用 Apple 书签的含义，也不提供内置 iCloud 访问能力。
 
-Initialization returns persisted metadata immediately and validates asynchronously. Startup never drops references. Explicit refresh recursively discovers songs but only removes missing references after a wholly successful traversal and independent absence proof. Any incomplete/error cursor or inaccessible subtree disables pruning for the entire scan, deliberately retaining more than necessary. External-storage providers additionally require a mounted StorageManager volume, valid persistent grant and healthy root before and after traversal. A null/error remote provider result is never deletion evidence. Cancellation signals and generations prevent stale scans from publishing after cancellation or source replacement.
+初始化立即返回持久化元数据，再异步校验。启动时绝不丢弃引用。手动刷新递归发现歌曲，但只有在遍历完全成功且取得独立的缺失证明后，才移除缺失引用。任何不完整或错误的游标、不可访问的子树都会禁止本次扫描的全部清理操作，有意保留更多条目。外部存储提供器还要求 StorageManager 卷已挂载、持久授权有效，且遍历前后根目录均健康。远程文件提供器返回 null 或错误绝不能作为删除证据。取消信号和代次标识可防止已过期的扫描在取消或来源替换后发布结果。
 
-The picker reports its result asynchronously. Canceling the system picker leaves the previous library and playback untouched. Activity reattachment keeps the pending picker result listener; no outstanding Flutter method result is retained across lifecycle changes.
+选择器异步报告结果。取消系统选择器时，保留原音乐库和播放状态。Activity 重新附着时会保留待处理的选择器结果监听器，但不会跨生命周期变化保留尚未完成的 Flutter 方法调用结果。
 
-## Playback
+## 播放
 
-The process-level engine survives activity recreation. MediaPlayer streams original source descriptors; metadata/artwork is fetched lazily on a separate executor. Generation checks prevent old song preparation and artwork from replacing a newer selection. Provider descriptor acquisition uses CancellationSignal. A poorly behaved third-party provider may ignore cancellation; its late result is still discarded.
+进程级播放引擎可在 Activity 重建后继续存在。MediaPlayer 通过原始源文件描述符流式读取，元数据和封面在独立执行器中按需获取。代次检查可防止旧歌曲的准备结果和封面覆盖新的选择。获取文件提供器描述符时使用 CancellationSignal。部分第三方文件提供器可能忽略取消请求，但其延迟返回的结果仍会被丢弃。
 
-The native media foreground service exposes notification previous/play/pause/next actions, seekable MediaSession state and lock-screen metadata. It remains foreground while preparing the next song. Audio focus handles interruption/ducking and the noisy-route receiver pauses when wired audio is disconnected. Playback resumes after a transient focus loss only when it had been playing. Pausing stops the foreground service; transport controls are available again after playback resumes in the app. The application does not automatically play after process death or reboot.
+原生媒体前台服务提供通知栏上一首/播放/暂停/下一首操作、可跳转的 MediaSession 状态和锁屏元数据。准备下一首歌曲时，服务保持在前台。音频焦点处理播放中断和降低音量的情况，音频路由变化接收器会在有线音频设备断开时暂停。短暂失去焦点后，仅在此前确实处于播放状态时恢复播放。暂停会停止前台服务，在应用内恢复播放后，媒体控制再次可用。应用不会在进程终止或设备重启后自动播放。
 
-## Validation status
+## 验证状态
 
-Source review completed; Kotlin/Android compilation and physical-device behavior require CI/device validation. No Android SDK was available in the authoring workspace. JVM tests cover bridge unknown-method handling and track snapshot fields; they are not substitutes for provider/player instrumentation.
+源码审查已完成，Kotlin/Android 编译和真机行为仍需通过 CI 或设备验证。编写时的工作区没有可用的 Android SDK。JVM 测试覆盖桥接层未知方法处理和歌曲快照字段，不能替代文件提供器及播放器的设备插桩测试。
 
-Before shipping, test: nested/Unicode/duplicate-named files; picker cancel and replacement; persisted access after restart; revoked permission; USB unplug during scan and playback; empty/incomplete/error provider results; external removal and explicit refresh; damaged/unsupported tracks; rapid A/B selection and cancellation; seek/shuffle/repeat; incoming call/focus loss; unplugged headphones; screen-off and background playback; Android 15+ foreground restrictions; landscape head-unit touch controls. Check that only metadata is stored in app support data.
+交付前须测试：嵌套目录、Unicode 文件名和重名文件；取消选择及替换来源；重启后的持久访问；权限撤销；扫描和播放期间拔出 USB；文件提供器返回空、不完整或错误结果；外部删除和手动刷新；损坏或不支持的歌曲；快速切换 A/B 歌曲及取消；进度跳转、随机和循环播放；来电或失去音频焦点；拔出耳机；熄屏与后台播放；Android 15 及以上版本的前台限制；车机横屏触控。检查应用支持数据中仅保存元数据。
 
-Official API references reviewed:
+已审阅的官方 API 资料：
+
 - https://developer.android.com/reference/android/provider/DocumentsContract
 - https://developer.android.com/reference/android/provider/DocumentsProvider
 - https://developer.android.com/media/optimize/audio-focus

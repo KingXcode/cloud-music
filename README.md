@@ -1,31 +1,31 @@
 # 云听 · Cloud Music
 
-A Flutter original-file music player for iPhone, iPad, macOS, Android (including ordinary APK-based head units), and the browser.
+基于 Flutter 的音乐播放器，直接播放原始音频文件，支持 iPhone、iPad、macOS、Android（包括可安装普通 APK 的车机）和浏览器。
 
-[Open the Web app](https://kingxcode.github.io/cloud-music/) · [Source repository](https://github.com/KingXcode/cloud-music) · [Build status](https://github.com/KingXcode/cloud-music/actions)
+[打开网页版](https://kingxcode.github.io/cloud-music/) · [源码仓库](https://github.com/KingXcode/cloud-music) · [构建状态](https://github.com/KingXcode/cloud-music/actions)
 
-## What it does
+## 功能介绍
 
-- Choose an iCloud Drive folder on Apple devices, or a local/USB directory through Android's system picker.
-- Keep permission and a metadata index; play original URLs/URIs instead of copying songs into the app's sandbox.
-- Restore folder bookmarks / persisted Android SAF permission. Browser directory handles are remembered when supported and permitted; other browsers request reselection when necessary.
-- Library with search, availability labels and explicit refresh.
-- Optional per-song lyrics search/download with explicit LRCLIB consent, version selection, synced LRC highlighting/seek, offline cache and local LRC/TXT import. See [lyrics usage, privacy and rights limits](docs/LYRICS.md).
-- Persistent mini-player and a full player with artwork fallback, metadata, seek, previous/next, play/pause, shuffle, repeat and volume.
-- Adaptive compact/landscape/wide layouts and larger touch targets. This is **not Android Auto**. Do not interact with the app while driving.
-- Startup validates known tracks; refresh discovers new songs and removes only confirmed-missing references. Offline iCloud, provider errors, revoked permissions and disconnected USB do not clear the library. Source files are never deleted.
+- 在 Apple 设备上选择 iCloud Drive 文件夹，或通过 Android 系统选择器选择本地、USB 目录。
+- 保存访问权限和元数据索引，通过原始 URL/URI 播放，不将歌曲复制到应用沙盒。
+- 恢复文件夹书签和 Android 存储访问框架（SAF）的持久权限。浏览器在支持且获准时记住目录句柄，其他浏览器会在需要时提示重新选择。
+- 音乐库支持搜索、可用状态标记和手动刷新。
+- 可按歌曲搜索、下载歌词：需明确同意访问 LRCLIB，支持版本选择、LRC 同步高亮与跳转、离线缓存及本地 LRC/TXT 导入。详见[歌词使用、隐私与版权限制](docs/LYRICS.md)。
+- 常驻迷你播放器和完整播放器，支持封面占位图、元数据、进度跳转、上一首/下一首、播放/暂停、随机播放、循环播放和音量调节。
+- 适配窄屏、横屏和宽屏布局，提供更大的触控区域。本应用**不是 Android Auto 应用**。请勿在驾驶时操作。
+- 启动时校验已知歌曲；刷新时发现新歌曲，只移除已确认缺失的索引条目。iCloud 离线、文件提供器报错、权限撤销或 USB 断开都不会清空音乐库，应用始终不会删除源文件。
 
-## Important boundaries
+## 使用限制与说明
 
-Audio is never uploaded. Browser audio is played through temporary Blob URLs. Apple iCloud/File Provider can download originals into system-managed device storage, so playback is not zero-storage streaming. The app stores metadata, access credentials and optional downloaded/imported lyrics. Online lyric search sends only explicitly approved song fields to LRCLIB; playback never searches automatically.
+应用不会上传音频。浏览器通过临时 Blob URL 播放音频。Apple iCloud/文件提供器可能将原始文件下载到系统管理的设备存储中，因此播放仍会占用设备空间。应用保存元数据、访问凭据，以及用户选择下载或导入的歌词。在线歌词搜索只向 LRCLIB 发送用户明确确认的歌曲字段，播放时不会自动搜索。
 
-Supported formats depend on AVFoundation, Android codecs and the browser. Filename extensions are discovery hints, not codec guarantees. Native artwork/metadata is loaded lazily for the selected song; the Web version currently uses filenames and fallback artwork.
+支持的音频格式取决于 AVFoundation、Android 编解码器和浏览器。文件扩展名仅用于发现候选音频，不能保证一定可以解码。原生端只按需加载所选歌曲的封面和元数据；网页版目前使用文件名和默认封面。
 
-This repository is an early working implementation. Automated tests do not replace physical iCloud/USB/head-unit/background audio tests. See platform implementation notes and `docs/REQUIREMENTS.md` for acceptance checks.
+本仓库目前处于早期可用阶段。自动化测试不能替代真实设备上的 iCloud、USB、车机和后台音频测试。验收项目见各平台实现说明及 `docs/REQUIREMENTS.md`。
 
-## Run locally
+## 本地运行
 
-Use Flutter **3.47.5** (Dart 3.13.4), then:
+使用 Flutter **3.47.5**（Dart 3.13.4），然后执行：
 
 ```sh
 flutter pub get
@@ -35,42 +35,42 @@ node --test test/web/music_gateway_test.cjs
 flutter run -d chrome
 ```
 
-For a local browser folder picker, serve through localhost or HTTPS. Chrome/Edge desktop have the most complete persistent File System Access support. A folder-input fallback is available in other compatible desktop browsers; iPhone/iPad use multiple audio-file selection with clear reselection guidance. See `docs/WEB_PLAYBACK.md`.
+在本地浏览器使用文件夹选择器时，请通过 localhost 或 HTTPS 提供服务。桌面版 Chrome/Edge 对 File System Access 持久访问的支持最完整。其他兼容的桌面浏览器提供文件夹输入回退方案；iPhone/iPad 使用音频文件多选，并明确提示何时需要重新选择。详见 `docs/WEB_PLAYBACK.md`。
 
 ```sh
-flutter run -d macos       # macOS + Xcode required
-flutter run -d ios         # choose a signed iPhone/iPad or simulator device ID
+flutter run -d macos       # 需要 macOS 和 Xcode
+flutter run -d ios         # 选择已配置签名的 iPhone/iPad 或模拟器设备 ID
 flutter build apk --release --target-platform android-arm,android-arm64,android-x64
 flutter build macos --release
 bash scripts/package_macos.sh
 ```
 
-Android minimum API 24. Apple plugin targets iOS 15 / macOS 12 or later. Physical Apple testing requires the appropriate signing setup and an iCloud account. iOS source is included; no signed iOS package is provided.
+Android 最低要求为 API 24。Apple 插件支持 iOS 15 / macOS 12 及以上版本。Apple 真机测试需要适当的签名配置和 iCloud 账号。仓库包含 iOS 源码，但不提供已签名的 iOS 安装包。
 
-The release Android configuration currently uses the standard debug/test signing key. It is deliberately labeled test-signed; replace with a properly managed production key before public production distribution. New CI runs may use a different key and require reinstalling this preview.
+Android 发布配置目前使用标准调试/测试签名密钥，因此安装包明确标记为测试签名。正式公开发行前，须换用妥善管理的生产密钥。新的 CI 构建可能使用不同密钥，届时可能需要重新安装预览版。
 
-## GitHub delivery
+## GitHub 交付流程
 
-- `Deploy Web to GitHub Pages`: validates, builds and deploys the browser app when main is pushed or manually dispatched. The Pages base path follows the repository name. The repository must support Pages and allow the workflow permissions.
-- `Build APK and macOS DMG`: manually dispatch with a new preview tag and `all` platforms. The `android` option builds/verifies only an APK artifact without publishing a release. Linux builds the universal APK; hosted macOS compiles the app and creates the DMG. It verifies APK signatures/package contents, checks the app executable/signature, verifies the DMG, writes SHA-256 checksums and publishes a prerelease only after both native jobs succeed.
-- The macOS DMG is unsigned and the app is not Developer ID signed/notarized. A local ad-hoc signature may be present. The release reports actual CPU architectures.
+- 网页部署工作流（`Deploy Web to GitHub Pages`）：推送到 main 分支或手动触发时，执行校验、构建并部署网页版。Pages 基础路径随仓库名称设置。仓库须支持 Pages，并允许工作流所需权限。
+- 原生打包工作流（`Build APK and macOS DMG`）：手动触发时指定新的预览版标签，并将平台设为 `all`。选择 `android` 时仅构建、验证 APK 产物，不发布版本。Linux 构建通用 APK，托管 macOS 编译应用并生成 DMG。流程会验证 APK 签名和包内容、检查应用可执行文件及签名、验证 DMG、生成 SHA-256 校验值，只有两个原生构建任务都成功后才发布预发布版本。
+- macOS DMG 未签名，应用未使用 Developer ID 签名，也未经过 Apple 公证；可能带有本地临时签名（ad-hoc）。发布信息会列出实际包含的 CPU 架构。
 
-No certificates, production signing keys or user music are stored in this repository.
+本仓库不保存证书、生产签名密钥或用户音乐。
 
-## Code map
+## 代码结构
 
-- `lib/ui/`: responsive Flutter library and player.
-- `lib/music_controller.dart`, `lib/models.dart`: typed presentation state and command handling.
-- `lib/gateway/`: native channel adapter and browser bridge.
-- `packages/folder_audio/darwin/`: shared Swift bookmark, coordination, iCloud and AVPlayer implementation.
-- `packages/folder_audio/android/`: SAF scanner, original-URI player and foreground media service.
-- `web/music_gateway.js`: browser handle persistence and local audio playback.
-- `docs/BRIDGE_CONTRACT.md`: platform interface.
+- `lib/ui/`：自适应 Flutter 音乐库和播放器界面。
+- `lib/music_controller.dart`、`lib/models.dart`：带类型约束的界面状态与命令处理。
+- `lib/gateway/`：原生通道适配器和浏览器桥接。
+- `packages/folder_audio/darwin/`：Apple 平台共享的 Swift 书签、文件协调、iCloud 和 AVPlayer 实现。
+- `packages/folder_audio/android/`：SAF 扫描器、原始 URI 播放器和媒体前台服务。
+- `web/music_gateway.js`：浏览器句柄持久化和本地音频播放。
+- `docs/BRIDGE_CONTRACT.md`：平台接口约定。
 
-## Validation status before the lyrics update
+## 歌词更新前的验证状态
 
-Passed in the cloud workspace: Flutter analyzer, 17 unit/widget tests (including compact/landscape/wide and large-text layouts), 25 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
+云端工作区已通过：Flutter 静态分析、17 项单元/组件测试（包括窄屏、横屏、宽屏和大字体布局）、25 项浏览器逻辑测试、JavaScript 语法检查及 Web 发布构建。Android/macOS 原生构建和安装包检查由 GitHub 发布工作流执行，须查看实际结果；仅源码检查通过不能证明编译成功。真机访问与播放测试仍需单独进行。
 
-Live Web smoke tests verified the published layout, full-player navigation, visible provider errors, and repeat/shuffle preference restoration. The automated browser could not open the system folder picker; real directory selection, audio playback and handle restoration remain unverified there.
+已部署网页版的冒烟测试验证了页面布局、完整播放器跳转、文件提供器错误提示，以及循环/随机播放偏好的恢复。自动化浏览器无法打开系统文件夹选择器，因此其中的真实目录选择、音频播放和句柄恢复尚未验证。
 
-Lyrics validation and native-device checks are documented separately in [docs/LYRICS.md](docs/LYRICS.md).
+歌词验证情况和原生设备检查另见[歌词文档](docs/LYRICS.md)。

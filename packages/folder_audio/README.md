@@ -1,15 +1,14 @@
 # folder_audio
 
-A new Flutter plugin project.
+一个新的 Flutter 插件项目。
 
-## Getting Started
+## 入门指南
 
-This project is a starting point for a Flutter
-[plug-in package](https://flutter.dev/to/develop-plugins),
-a specialized package that includes platform-specific implementation code for
-Android and/or iOS.
+本项目是 Flutter
+[插件包](https://flutter.dev/to/develop-plugins)的起始模板。
+插件包是一类包含 Android 和/或 iOS 平台专用实现代码的包。
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+如需 Flutter 开发入门帮助，请查阅
+[在线文档](https://docs.flutter.dev)，其中提供教程、
+示例、移动开发指南和完整 API 参考。
 

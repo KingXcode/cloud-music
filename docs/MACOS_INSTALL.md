@@ -1,9 +1,9 @@
-Cloud Music macOS preview
+云听 macOS 预览版
 
-This DMG contains a release build without Developer ID signing or Apple notarization. The app may have a local ad-hoc signature needed for execution. The DMG itself is unsigned.
+此 DMG 包含发布构建，未使用 Developer ID 签名，也未经过 Apple 公证。应用可能带有运行所需的本地临时签名（ad-hoc），DMG 本身未签名。
 
-Drag the app to Applications. macOS may block opening it because it has not been notarized. If you trust this release, follow the Open Anyway option shown by macOS in System Settings > Privacy & Security. Do not disable Gatekeeper system-wide.
+将应用拖到“应用程序”文件夹。由于应用未经公证，macOS 可能阻止打开。如果信任此版本，可按照 macOS“系统设置 > 隐私与安全性”中显示的“仍要打开”选项操作。不要在系统范围内关闭 Gatekeeper。
 
-Select an iCloud Drive folder using the system folder picker. Only the folder permission and music index are saved by the app. Audio stays in the original folder; iCloud may download files to Apple's managed device storage for playback.
+使用系统文件夹选择器选择 iCloud Drive 文件夹。应用仅保存文件夹权限和音乐索引，音频保留在原文件夹中；iCloud 可能将文件下载到 Apple 管理的设备存储中以供播放。
 
-See macos-architectures.txt in the release for the architectures actually built. Real iCloud and device playback validation is listed separately in the release notes.
+实际构建包含的架构见发布附件 macos-architectures.txt。真实 iCloud 访问及设备播放的验证情况在发布说明中单独列出。

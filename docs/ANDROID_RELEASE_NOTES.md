@@ -1,23 +1,23 @@
-## Cloud Music 0.2.0 (build 3) · Android-only preview
+## 云听 0.2.0（构建号 3）· Android 专用预览版
 
-### Lyrics download and display
+### 歌词下载与显示
 
-- Search LRCLIB after reviewing and confirming the song title, artist and optional album. No automatic searches or audio uploads.
-- Select the matching version before saving lyrics locally. Artist, album, duration and synchronized/plain/instrumental status are shown; duration mismatches are flagged.
-- Synchronized LRC highlighting and follow-scroll, tap a line to seek, and plain-text/instrumental fallback.
-- Import UTF-8 `.lrc` / `.txt` through the system picker, or paste text. Accepted lyrics remain available offline in app-owned cache; originals are never changed.
-- Open the full player and tap the top-right lyrics icon. Errors and cancellations preserve existing lyrics; stale responses cannot attach to another song or source.
+- 核对并确认歌曲标题、歌手和可选专辑后，搜索 LRCLIB。不会自动搜索，也不会上传音频。
+- 选择匹配版本后，再将歌词保存到本地。候选结果显示歌手、专辑、时长，以及同步歌词、纯文本歌词或纯音乐状态；时长不匹配时会提示。
+- 支持同步 LRC 高亮和跟随滚动、点击歌词行跳转播放，以及纯文本歌词和纯音乐回退显示。
+- 通过系统选择器导入 UTF-8 `.lrc` / `.txt`，或粘贴文本。已确认的歌词保存在应用自有缓存中，可离线使用，不会修改原始文件。
+- 打开完整播放器，点击右上角歌词图标。错误和取消操作都会保留已有歌词，过期响应不会关联到其他歌曲或来源。
 
-Downloaded lyrics use a bounded **in-app cache**, not files written next to your music. The cache keeps up to approximately 2 MiB / 100 songs. Lyrics may be inaccurate and copyrighted; download only when permitted. The LRCLIB server's software license does not establish a blanket lyric-content license. See [lyrics usage, privacy and rights limits](https://github.com/KingXcode/cloud-music/blob/main/docs/LYRICS.md).
+下载的歌词使用有大小限制的**应用内缓存**，不会写入音乐所在目录。缓存上限约为 2 MiB / 100 首歌曲。歌词可能不准确，也可能受版权保护，请仅在获准时下载。LRCLIB 服务端的软件许可证不代表对全部歌词内容的授权。详见[歌词使用、隐私与版权限制](https://github.com/KingXcode/cloud-music/blob/main/docs/LYRICS.md)。
 
-Download `cloud-music-android-test-signed.apk` below. The universal APK includes ARM64, ARM32 and x86_64 and requires Android 7.0 / API 24 or later. It is intended for phones/tablets and ordinary Android APK head units, not Android Auto.
+请下载下方的 `cloud-music-android-test-signed.apk`。通用 APK 包含 ARM64、ARM32 和 x86_64 架构，要求 Android 7.0 / API 24 或更高版本，适用于手机、平板和可安装普通 APK 的 Android 车机，不适用于 Android Auto。
 
-- Pick a local or USB directory and play originals without copying a music library into the app.
-- Persistent mini-player, full-screen player, artwork/metadata, seeking, shuffle/repeat, responsive landscape layout and refresh.
-- Disconnected USB or uncertain provider failures retain existing entries. Refresh never deletes original files.
+- 选择本地或 USB 目录，直接播放原始文件，无需将音乐库复制到应用中。
+- 提供常驻迷你播放器、全屏播放器、封面/元数据、进度跳转、随机/循环播放、自适应横屏布局和刷新功能。
+- USB 断开或文件提供器发生无法确认原因的故障时，保留已有条目。刷新不会删除原始文件。
 
-This package is **debug/test-signed**, not signed with a production identity. A future preview may require uninstall/reinstall. The publishing workflow requires Flutter checks, Android bridge JVM tests, APK signature verification and package/architecture checks to pass before releasing the APK. Physical USB/head-unit playback, lyrics picker and background behavior still need device testing. Do not interact with the app while driving.
+此安装包使用**调试/测试签名**，未使用生产身份签名。后续预览版可能需要卸载后重新安装。发布工作流要求 Flutter 检查、Android 桥接 JVM 测试、APK 签名验证及包内容/架构检查全部通过后，才发布 APK。真实 USB、车机播放、歌词选择器和后台行为仍需真机测试。请勿在驾驶时操作应用。
 
-This release contains **only the Android APK**, not a macOS DMG or an iOS package. macOS packaging remains pending. The Web preview is at https://kingxcode.github.io/cloud-music/ .
+本次发布**仅包含 Android APK**，不包含 macOS DMG 或 iOS 安装包，macOS 打包仍待完成。可访问[网页版预览](https://kingxcode.github.io/cloud-music/)。
 
-Verify the APK against `SHA256SUMS.txt`. `android-signature.txt` and `android-package.txt` record build verification results. Codec availability depends on the device.
+请使用 `SHA256SUMS.txt` 核对 APK 校验值。`android-signature.txt` 和 `android-package.txt` 记录构建验证结果。可用的编解码器取决于设备。
