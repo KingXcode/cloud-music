@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_music/models.dart';
+import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
 
 class FakeController extends ChangeNotifier implements MusicController {
-  FakeController(this.snapshot);
+  FakeController(this.snapshot, {LyricsController? lyrics})
+    : lyrics = lyrics ?? LyricsController();
+  @override
+  final LyricsController lyrics;
   @override
   LibrarySnapshot snapshot;
   @override
@@ -129,6 +133,10 @@ void main() {
         await tester.pumpAndSettle();
         // The mini-player opens a real route. Back restores the library.
         expect(find.byTooltip('返回资料库'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.byTooltip('查看歌词'));
+        await tester.pumpAndSettle();
+        expect(find.text('歌词').last.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('返回资料库'));
         await tester.pumpAndSettle();

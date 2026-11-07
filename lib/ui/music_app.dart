@@ -4,6 +4,7 @@ import 'package:flutter/material.dart' hide RepeatMode;
 
 import '../models.dart';
 import '../music_controller.dart';
+import 'lyrics_panel.dart';
 
 const _ink = Color(0xFF111B2E);
 const _muted = Color(0xFF9FAABD);
@@ -606,8 +607,9 @@ class _MiniPlayer extends StatelessWidget {
 }
 
 class _PlayerPage extends StatelessWidget {
-  const _PlayerPage({required this.controller});
+  _PlayerPage({required this.controller});
   final MusicController controller;
+  final _lyricsKey = GlobalKey();
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: controller,
@@ -620,6 +622,21 @@ class _PlayerPage extends StatelessWidget {
         ),
         title: const Text('正在播放', style: TextStyle(fontSize: 16)),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: '查看歌词',
+            icon: const Icon(Icons.lyrics_outlined),
+            onPressed: () {
+              final target = _lyricsKey.currentContext;
+              if (target != null) {
+                Scrollable.ensureVisible(
+                  target,
+                  duration: const Duration(milliseconds: 300),
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: Column(
@@ -643,6 +660,7 @@ class _PlayerPage extends StatelessWidget {
                       constraints: const BoxConstraints(maxWidth: 960),
                       child: _PlayerContents(
                         controller: controller,
+                        lyricsPanelKey: _lyricsKey,
                         artworkSize: size.maxWidth < 600
                             ? (size.maxWidth - 80).clamp(140.0, 330.0)
                             : (size.maxHeight - 32).clamp(140.0, 320.0),
@@ -667,7 +685,9 @@ class _PlayerContents extends StatelessWidget {
     required this.artworkSize,
     this.compact = false,
     this.horizontal = false,
+    this.lyricsPanelKey,
   });
+  final Key? lyricsPanelKey;
   final MusicController controller;
   final double artworkSize;
   final bool compact, horizontal;
@@ -824,12 +844,26 @@ class _PlayerContents extends StatelessWidget {
       ],
     );
     final artwork = _Artwork(size: artworkSize, bytes: s.artwork);
+    final lyrics = Padding(
+      padding: const EdgeInsets.only(top: 24),
+      child: LyricsPanel(
+        key: lyricsPanelKey,
+        controller: controller.lyrics,
+        position: s.position,
+        onSeek: controller.seek,
+      ),
+    );
     if (horizontal) {
-      return Row(
+      return Column(
         children: [
-          Expanded(child: Center(child: artwork)),
-          const SizedBox(width: 40),
-          Expanded(child: details),
+          Row(
+            children: [
+              Expanded(child: Center(child: artwork)),
+              const SizedBox(width: 40),
+              Expanded(child: details),
+            ],
+          ),
+          lyrics,
         ],
       );
     }
@@ -842,6 +876,7 @@ class _PlayerContents extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 440),
           child: details,
         ),
+        lyrics,
       ],
     );
   }

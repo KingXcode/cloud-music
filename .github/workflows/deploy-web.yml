@@ -20,6 +20,10 @@ jobs:
       - run: bash scripts/ci_flutter.sh
       - run: flutter pub get
       - run: flutter analyze && flutter test
+      - name: Lyrics browser regression
+        env:
+          CHROME_EXECUTABLE: /usr/bin/google-chrome
+        run: flutter test --platform chrome test/lyrics_web_test.dart
       - run: node --test test/web/music_gateway_test.cjs
       - name: Build for the repository Pages path
         env:

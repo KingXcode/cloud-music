@@ -5,11 +5,15 @@ import 'package:flutter/services.dart';
 
 import 'gateway/music_gateway.dart';
 import 'models.dart';
+import 'lyrics/lyrics_controller.dart';
 
 class MusicController extends ChangeNotifier {
   // Public injection name intentionally differs from the private field.
-  // ignore: prefer_initializing_formals
-  MusicController({required MusicGateway gateway}) : _gateway = gateway;
+  MusicController({required MusicGateway gateway, LyricsController? lyrics})
+    // ignore: prefer_initializing_formals
+    : _gateway = gateway,
+      lyrics = lyrics ?? LyricsController();
+  final LyricsController lyrics;
   final MusicGateway _gateway;
   LibrarySnapshot _snapshot = const LibrarySnapshot();
   LibrarySnapshot get snapshot => _snapshot;
@@ -29,11 +33,13 @@ class MusicController extends ChangeNotifier {
   Future<void> initialize() => _initialization ??= _initialize();
   Future<void> _initialize() async {
     final revision = _eventRevision;
+    unawaited(lyrics.initialize());
     _subscription = _gateway.snapshots.listen(
       (value) {
         if (_disposed) return;
         _eventRevision++;
         _snapshot = value;
+        _selectLyricsTrack();
         notifyListeners();
       },
       onError: (Object error) {
@@ -42,7 +48,10 @@ class MusicController extends ChangeNotifier {
     );
     try {
       final initial = await _gateway.initialize();
-      if (!_disposed && revision == _eventRevision) _snapshot = initial;
+      if (!_disposed && revision == _eventRevision) {
+        _snapshot = initial;
+        _selectLyricsTrack();
+      }
     } catch (error) {
       _showError(error);
     } finally {
@@ -52,6 +61,13 @@ class MusicController extends ChangeNotifier {
       }
     }
   }
+
+  void _selectLyricsTrack() => lyrics.selectTrack(
+    _snapshot.currentTrack,
+    source: _snapshot.sourceKind,
+    sourceIdentity: _snapshot.sourceIdentity,
+    folder: _snapshot.folderName ?? '',
+  );
 
   Future<void> pickFolder() async {
     if (isBusy) return;
@@ -126,6 +142,7 @@ class MusicController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    lyrics.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_gateway.dispose());
     super.dispose();

@@ -8,6 +8,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_music/models.dart';
+import 'package:cloud_music/lyrics/lyrics_controller.dart';
+
+import 'lyrics_test.dart' show FakeLyricsPlatform;
+
 import 'package:cloud_music/ui/music_app.dart';
 
 import 'ui_music_app_test.dart' show FakeController;
@@ -37,7 +41,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final boundary = GlobalKey();
-    final c = FakeController(const LibrarySnapshot());
+    final c = FakeController(
+      const LibrarySnapshot(),
+      lyrics: LyricsController(platform: FakeLyricsPlatform()),
+    );
     Future<void> capture(String name) async {
       await tester.pump(const Duration(seconds: 1));
       await tester.pumpAndSettle();
@@ -137,10 +144,16 @@ void main() {
       duration: Duration(minutes: 4, seconds: 26),
       volume: .65,
     );
+    c.lyrics.selectTrack(c.snapshot.currentTrack);
+    await c.lyrics.importText(
+      '[00:01]测试歌词 · 只用于界面验证\n[00:30]风穿过安静的窗台\n[01:12]把这一刻留给音乐\n[01:25]下一段旋律正在路上',
+    );
     c.notifyListeners();
     await capture('phone-library');
     await tester.tap(find.text('山间的风').last);
     await capture('phone-player');
+    await tester.ensureVisible(find.byKey(const Key('lyrics-panel')));
+    await capture('phone-lyrics');
     await tester.tap(find.byTooltip('返回资料库'));
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(1440, 900);

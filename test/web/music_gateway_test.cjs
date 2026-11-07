@@ -310,3 +310,24 @@ test('fallback click error is visible and disposal ignores a late selection', as
   late.input.files = [selectedFile('late.mp3')]; late.input.listeners.change();
   assert.equal(late.events.length, 0); assert.equal(late.urls.size, 0);
 });
+test('different same-named folders receive separate persistent source identities', async () => {
+  const first = directory({'a.mp3':file('a.mp3')});
+  const second = directory({'a.mp3':file('a.mp3')});
+  const h = harness({handle: first, cached: {sourceIdentity:'original-root'}, picker: () => second});
+  await h.gateway.initialize(); await tick();
+  assert.equal(h.events.at(-1).sourceIdentity, 'original-root');
+  await h.gateway.command('pickFolder');
+  const identity = h.events.at(-1).sourceIdentity;
+  assert.notEqual(identity, 'original-root');
+  assert.equal(h.cached.sourceIdentity, identity);
+  await h.gateway.command('pickFolder');
+  assert.equal(h.events.at(-1).sourceIdentity, identity); // Same exact handle.
+  h.gateway.dispose();
+});
+test('saved handle identity wins over mismatched metadata cache', async () => {
+  const h = harness({handle: {handle: directory({'a.mp3':file('a.mp3')}), sourceIdentity:'actual-root'},
+    cached: {sourceIdentity:'stale-root'}});
+  await h.gateway.initialize(); await tick();
+  assert.equal(h.events.at(-1).sourceIdentity, 'actual-root');
+  h.gateway.dispose();
+});

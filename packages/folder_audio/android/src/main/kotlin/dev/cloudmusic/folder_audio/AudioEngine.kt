@@ -80,6 +80,7 @@ internal class AudioEngine private constructor(val context: Context) {
         handler.post(object : Runnable { override fun run() { if (isPlaying()) emit(); handler.postDelayed(this, 750) } })
     }
     fun snapshot(): Map<String, Any?> = mapOf("folderName" to folderName, "sourceKind" to "android",
+        "sourceIdentity" to tree?.toString(),
         "tracks" to tracks.map { it.map() }, "currentTrackId" to current, "isPlaying" to isPlaying(),
         "isLoading" to loading, "isScanning" to scanning, "shuffle" to shuffle,
         "positionMs" to position(), "durationMs" to duration(), "repeatMode" to repeat,

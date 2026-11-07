@@ -2,6 +2,8 @@
 (() => {
   'use strict';
   const META = 'cloud-music-browser-v1';
+  const newSourceIdentity = () => globalThis.crypto?.randomUUID?.() ||
+    `source-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const extensions = /\.(mp3|m4a|aac|wav|wave|flac|ogg|oga|opus|aif|aiff|alac|mp4|webm)$/i;
   const missing = e => e?.name === 'NotFoundError';
   const aborted = e => e?.name === 'AbortError';
@@ -45,7 +47,7 @@
     const filesOnly = appleMobile || (typeof window.showDirectoryPicker !== 'function' &&
       !('webkitdirectory' in document.createElement('input')));
     audio.preload = 'metadata';
-    const state = {folderName: null, sourceKind: 'web', selectionMode: filesOnly ? 'files' : 'folder', tracks: [], currentTrackId: null,
+    const state = {folderName: null, sourceKind: 'web', sourceIdentity: newSourceIdentity(), selectionMode: filesOnly ? 'files' : 'folder', tracks: [], currentTrackId: null,
       isPlaying: false, isLoading: false, isScanning: false, shuffle: false,
       positionMs: 0, durationMs: 0, repeatMode: 'off', volume: 1, message: null};
     let root = null, entries = new Map(), disposed = false, initialized = false;
@@ -55,7 +57,7 @@
     const snapshot = () => ({...state, tracks: state.tracks.map(t => ({...t}))});
     function save() {
       try {
-        localStorage.setItem(META, JSON.stringify({folderName: state.folderName,
+        localStorage.setItem(META, JSON.stringify({folderName: state.folderName, sourceIdentity: state.sourceIdentity,
           tracks: state.tracks, shuffle: state.shuffle, repeatMode: state.repeatMode, volume: state.volume}));
       } catch (_) { /* Private mode/quota: current-session playback still works. */ }
     }
@@ -179,9 +181,15 @@
         }
       }
       if (replacing) {
+        let sameSource = handle === root;
+        if (!sameSource && root && typeof handle.isSameEntry === 'function') {
+          try { sameSource = await handle.isSameEntry(root); } catch (_) {}
+        }
+        if (disposed || generation !== scanGeneration) return;
+        if (!sameSource) state.sourceIdentity = newSourceIdentity();
         clearAudio(); history.length = 0; state.currentTrackId = null;
         root = handle; state.folderName = handle.name;
-        try { await savedHandle(handle, true); }
+        try { await savedHandle({handle, sourceIdentity: state.sourceIdentity}, true); }
         catch (_) { state.message = '浏览器无法保存文件夹授权，下次打开可能需要重新选择。'; }
         if (disposed || generation !== scanGeneration) return;
       }
@@ -215,6 +223,8 @@
       }
       ++scanGeneration; clearAudio(); root = null; history.length = 0; shuffleVisited.clear();
       entries = next;
+      // File inputs cannot verify that two selections refer to the same root.
+      state.sourceIdentity = newSourceIdentity();
       state.folderName = filesOnly ? '已选音乐文件' :
         (files[0].webkitRelativePath?.split('/')[0] || '已选音乐文件');
       state.currentTrackId = null;
@@ -348,6 +358,7 @@
           const cached = JSON.parse(localStorage.getItem(META) || 'null');
           if (cached) {
             state.folderName = typeof cached.folderName === 'string' ? cached.folderName : null;
+            if (typeof cached.sourceIdentity === 'string' && cached.sourceIdentity.length < 200) state.sourceIdentity = cached.sourceIdentity;
             state.tracks = Array.isArray(cached.tracks) ? cached.tracks.filter(t => typeof t.id === 'string' && typeof t.relativePath === 'string').map(t => ({...t, status: 'unknown'})) : [];
             state.shuffle = cached.shuffle === true;
             state.repeatMode = ['off', 'all', 'one'].includes(cached.repeatMode) ? cached.repeatMode : 'off';
@@ -365,10 +376,12 @@
         // Return cached metadata immediately. Restore/validate handles in background.
         setTimeout(async () => {
           try {
-            const handle = await savedHandle();
+            const saved = await savedHandle();
+            const handle = saved?.handle || saved;
             if (disposed || generation !== scanGeneration || picking) return;
             if (handle && typeof handle.queryPermission === 'function') {
               root = handle;
+              if (typeof saved?.sourceIdentity === 'string') state.sourceIdentity = saved.sourceIdentity;
               const permission = await handle.queryPermission({mode: 'read'});
               if (disposed || generation !== scanGeneration || picking) return;
               if (permission === 'granted') await scan(handle, false);

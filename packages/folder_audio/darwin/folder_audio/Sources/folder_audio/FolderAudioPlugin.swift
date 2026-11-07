@@ -29,6 +29,7 @@ private struct Library: Codable {
     var bookmark: Data?
     var folderName: String?
     var volumeUUID: String?
+    var sourceIdentity: String?
     var tracks: [Track] = []
     var shuffle = false
     var repeatMode = "off"
@@ -105,6 +106,13 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private var loading = false
     private var scanning = false
     private var picking = false
+    private var lyricsResult: FlutterResult?
+    private var lyricsRequest: UUID?
+    #if os(iOS)
+    private var lyricsPicker: UIDocumentPickerViewController?
+    #else
+    private var lyricsPanel: NSOpenPanel?
+    #endif
     private var message: String?
     private var wantsPlayback = false
     private var audioInterrupted = false
@@ -136,6 +144,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         let duration = player.currentItem?.duration.seconds ?? 0
         let position = player.currentTime().seconds
         var result: [String: Any] = ["folderName": library.folderName as Any? ?? NSNull(), "sourceKind": "apple",
+            "sourceIdentity": library.sourceIdentity as Any? ?? NSNull(),
             "tracks": library.tracks.map { $0.map }, "currentTrackId": currentID as Any? ?? NSNull(),
             "isPlaying": player.timeControlStatus == .playing, "isLoading": loading || (wantsPlayback && player.timeControlStatus == .waitingToPlayAtSpecifiedRate),
             "isScanning": scanning, "shuffle": library.shuffle,
@@ -161,12 +170,46 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
+        case "readLyricsCache":
+            persistence.async {
+                do {
+                    let url = Self.lyricsStore
+                    let value = FileManager.default.fileExists(atPath: url.path)
+                        ? try Self.readLyrics(url, limit: 2 * 1024 * 1024) : nil
+                    DispatchQueue.main.async { result(value) }
+                } catch {
+                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法读取歌词缓存。", details: nil)) }
+                }
+            }
+            return
+        case "writeLyricsCache":
+            guard let value = args["value"] as? String else {
+                result(FlutterError(code: "invalid_arguments", message: "缺少歌词缓存内容。", details: nil)); return
+            }
+            persistence.async {
+                do {
+                    let data = Data(value.utf8)
+                    guard data.count <= 2 * 1024 * 1024 else { throw SourceError.unsupported }
+                    let url = Self.lyricsStore
+                    try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: url, options: .atomic)
+                    DispatchQueue.main.async { result(nil) }
+                } catch {
+                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法保存歌词缓存（上限 2 MiB）。", details: nil)) }
+                }
+            }
+            return
+        case "importLyrics": importLyrics(result); return
         case "initialize":
             if !loaded {
                 loaded = true
                 // The small local metadata index is loaded before initialize returns;
                 // cloud access/validation is always asynchronous.
                 if let data = try? Data(contentsOf: Self.store), let saved = try? JSONDecoder().decode(Library.self, from: data) { library = saved }
+                // Migrate old indexes once; refresh and bookmark renewal retain this identity.
+                if library.bookmark != nil, library.sourceIdentity == nil {
+                    library.sourceIdentity = UUID().uuidString; save()
+                }
                 player.volume = library.volume
                 scan(removeMissing: false, discover: false)
             }
@@ -200,6 +243,98 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         emit(); result(snapshot())
     }
 
+    private static var lyricsStore: URL {
+        store.deletingLastPathComponent().appendingPathComponent("lyrics-cache.json")
+    }
+    // Bound reads even when a provider reports an incorrect or missing file size.
+    private static func readLyrics(_ url: URL, limit: Int) throws -> String {
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        var bytes = Data()
+        while bytes.count <= limit {
+            let chunk = try file.read(upToCount: min(8192, limit + 1 - bytes.count)) ?? Data()
+            if chunk.isEmpty { break }
+            bytes.append(chunk)
+        }
+        guard bytes.count <= limit, var value = String(data: bytes, encoding: .utf8) else { throw SourceError.unsupported }
+        if value.hasPrefix("\u{FEFF}") { value.removeFirst() }
+        return value
+    }
+    private func finishLyrics(_ value: Any?) {
+        let result = lyricsResult
+        lyricsResult = nil; lyricsRequest = nil
+        #if os(iOS)
+        lyricsPicker = nil
+        #else
+        lyricsPanel = nil
+        #endif
+        result?(value)
+    }
+    private func importLyrics(_ result: @escaping FlutterResult) {
+        guard lyricsResult == nil, !picking else {
+            result(FlutterError(code: "picker_busy", message: "请先关闭当前文件选择器。", details: nil)); return
+        }
+        lyricsResult = result; lyricsRequest = UUID()
+        #if os(iOS)
+        let types: [UTType] = [.plainText, UTType(filenameExtension: "lrc") ?? .data]
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
+        picker.delegate = self; picker.allowsMultipleSelection = false
+        var controller = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }.first(where: { $0.isKeyWindow })?.rootViewController
+        while let presented = controller?.presentedViewController { controller = presented }
+        guard let host = controller, host.viewIfLoaded?.window != nil, !host.isBeingDismissed else {
+            finishLyrics(FlutterError(code: "no_activity", message: "请返回应用后导入歌词。", details: nil)); return
+        }
+        lyricsPicker = picker
+        host.present(picker, animated: true)
+        picker.presentationController?.delegate = self
+        #else
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false; panel.canChooseFiles = true; panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.plainText, UTType(filenameExtension: "lrc") ?? .data]
+        panel.prompt = "导入歌词"; lyricsPanel = panel
+        panel.begin { [weak self] response in
+            guard let self = self, self.lyricsPanel === panel else { return }
+            if response == .OK, let url = panel.url { self.loadImportedLyrics(url) }
+            else { self.finishLyrics(nil) }
+        }
+        #endif
+    }
+    private func loadImportedLyrics(_ url: URL) {
+        guard let request = lyricsRequest else { return }
+        io.async { [weak self] in
+            let selectedScope = Scope(url)
+            let outcome: Result<String, Error> = Result {
+                guard ["lrc", "txt"].contains(url.pathExtension.lowercased()) else { throw SourceError.unsupported }
+                let coordinator = NSFileCoordinator(filePresenter: nil)
+                var error: NSError?
+                var text: Result<String, Error>?
+                coordinator.coordinate(readingItemAt: url, options: [], error: &error) { target in
+                    text = Result { try Self.readLyrics(target, limit: 256 * 1024) }
+                }
+                if let error = error { throw error }
+                guard let text = text else { throw SourceError.unavailable }
+                return try text.get()
+            }
+            withExtendedLifetime(selectedScope) {}
+            DispatchQueue.main.async {
+                guard let self = self, self.lyricsRequest == request else { return }
+                switch outcome {
+                case .success(let text): self.finishLyrics(text)
+                case .failure: self.finishLyrics(FlutterError(code: "lyrics_error", message: "请选择不超过 256 KiB 的 UTF-8 .lrc 或 .txt 文件。", details: nil))
+                }
+            }
+        }
+    }
+    public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
+        #if os(iOS)
+        lyricsPicker?.dismiss(animated: false)
+        #else
+        lyricsPanel?.cancel(nil)
+        #endif
+        finishLyrics(FlutterError(code: "lyrics_error", message: "应用已关闭，请重试导入。", details: nil))
+    }
+
     private static func bookmark(_ url: URL) throws -> Data {
         #if os(macOS)
         return try url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess], includingResourceValuesForKeys: nil, relativeTo: nil)
@@ -218,7 +353,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         return (scope, stale ? try bookmark(url) : nil)
     }
     private func pickFolder() {
-        guard !picking else { return }; picking = true
+        guard !picking, lyricsResult == nil else { return }; picking = true
         #if os(iOS)
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
         picker.delegate = self; picker.allowsMultipleSelection = false
@@ -250,6 +385,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     guard let self = self, self.generation == request else { return }
                     withExtendedLifetime(selectedScope) {
                         self.library.bookmark = data; self.library.folderName = url.lastPathComponent; self.library.volumeUUID = volumeUUID
+                        // Explicit reselection starts a new source, even for the same folder.
+                        self.library.sourceIdentity = UUID().uuidString
                         self.library.tracks = []; self.currentID = nil; self.history = []; self.shuffleBag = []; self.shuffleCycleStarted = false
                         self.save(); self.scan(removeMissing: false, discover: true)
                     }
@@ -789,11 +926,20 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
 }
 #if os(iOS)
-extension FolderAudioPlugin: UIDocumentPickerDelegate {
+extension FolderAudioPlugin: UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if controller === lyricsPicker {
+            if let url = urls.first { loadImportedLyrics(url) } else { finishLyrics(nil) }
+            return
+        }
         picking = false
         if let url = urls.first { select(url) }
     }
-    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { picking = false }
+    public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        if controller === lyricsPicker { finishLyrics(nil) } else { picking = false }
+    }
+    public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        if presentationController.presentedViewController === lyricsPicker { finishLyrics(nil) }
+    }
 }
 #endif

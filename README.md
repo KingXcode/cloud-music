@@ -10,13 +10,14 @@ A Flutter original-file music player for iPhone, iPad, macOS, Android (including
 - Keep permission and a metadata index; play original URLs/URIs instead of copying songs into the app's sandbox.
 - Restore folder bookmarks / persisted Android SAF permission. Browser directory handles are remembered when supported and permitted; other browsers request reselection when necessary.
 - Library with search, availability labels and explicit refresh.
+- Optional per-song lyrics search/download with explicit LRCLIB consent, version selection, synced LRC highlighting/seek, offline cache and local LRC/TXT import. See [lyrics usage, privacy and rights limits](docs/LYRICS.md).
 - Persistent mini-player and a full player with artwork fallback, metadata, seek, previous/next, play/pause, shuffle, repeat and volume.
 - Adaptive compact/landscape/wide layouts and larger touch targets. This is **not Android Auto**. Do not interact with the app while driving.
 - Startup validates known tracks; refresh discovers new songs and removes only confirmed-missing references. Offline iCloud, provider errors, revoked permissions and disconnected USB do not clear the library. Source files are never deleted.
 
 ## Important boundaries
 
-Audio is never uploaded. Browser audio is played through temporary Blob URLs. Apple iCloud/File Provider can download originals into system-managed device storage, so playback is not zero-storage streaming. The app stores metadata and access credentials only.
+Audio is never uploaded. Browser audio is played through temporary Blob URLs. Apple iCloud/File Provider can download originals into system-managed device storage, so playback is not zero-storage streaming. The app stores metadata, access credentials and optional downloaded/imported lyrics. Online lyric search sends only explicitly approved song fields to LRCLIB; playback never searches automatically.
 
 Supported formats depend on AVFoundation, Android codecs and the browser. Filename extensions are discovery hints, not codec guarantees. Native artwork/metadata is loaded lazily for the selected song; the Web version currently uses filenames and fallback artwork.
 
@@ -66,8 +67,10 @@ No certificates, production signing keys or user music are stored in this reposi
 - `web/music_gateway.js`: browser handle persistence and local audio playback.
 - `docs/BRIDGE_CONTRACT.md`: platform interface.
 
-## Validation status at source delivery
+## Validation status before the lyrics update
 
 Passed in the cloud workspace: Flutter analyzer, 17 unit/widget tests (including compact/landscape/wide and large-text layouts), 25 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
 
 Live Web smoke tests verified the published layout, full-player navigation, visible provider errors, and repeat/shuffle preference restoration. The automated browser could not open the system folder picker; real directory selection, audio playback and handle restoration remain unverified there.
+
+Lyrics validation and native-device checks are documented separately in [docs/LYRICS.md](docs/LYRICS.md).

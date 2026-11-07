@@ -1,7 +1,7 @@
 name: cloud_music
 description: Private original-file music player for Apple devices, Android folders and the web.
 publish_to: none
-version: 0.1.1+2
+version: 0.2.0+3
 environment:
   sdk: '>=3.13.0 <4.0.0'
 dependencies:

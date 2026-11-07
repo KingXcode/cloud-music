@@ -19,3 +19,22 @@ Snapshot fields:
 Defaults: false booleans, 0 times, volume 1, repeat off, empty track list.
 
 Only persist metadata, bookmark/tree URI and preferences, never audio. Root selection is explicit; never delete/move/write/copy source files. Startup validates and marks; explicit refresh discovers new songs and removes confirmed-missing references. Unmounted USB, permission errors, iCloud placeholders/offline and incomplete scans are not deletion evidence. Child directories with errors retain their old entries. A root folder error retains all old entries. Initial selection scans recursively. Use audio MIME/type/extension for discovery, then player errors for codec validation, without deleting unsupported entries.
+
+
+## Optional lyrics bridge (0.2)
+
+Snapshots also expose `sourceIdentity`: a persisted opaque Apple root UUID,
+Android tree URI, or browser root UUID. It is used only for local cache isolation,
+never sent to the lyrics provider. Distinct same-named folders must not share it.
+Apple folder reselection and browser file-input reselection create a new identity.
+
+Native `cloud_music/control` additionally supports:
+
+- `readLyricsCache` (no arguments) -> nullable UTF-8 JSON string.
+- `writeLyricsCache` (`value`: string) -> null. Atomic app-owned write, max 2 MiB.
+- `importLyrics` (no arguments) -> selected UTF-8 LRC/TXT string, or null on cancel.
+  Max 256 KiB. No write/delete permission to the selected original is requested.
+
+These return their own values rather than a library snapshot. Errors are
+`lyrics_error`, `invalid_arguments`, `picker_busy` or `no_activity`.
+See [LYRICS.md](LYRICS.md) for the explicit-consent provider flow and limits.
