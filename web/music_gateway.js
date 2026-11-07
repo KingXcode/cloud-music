@@ -6,7 +6,8 @@
   const missing = e => e?.name === 'NotFoundError';
   const aborted = e => e?.name === 'AbortError';
   const messageFor = e => missing(e) ? '找不到原始文件，请连接原来的磁盘后刷新。' :
-    e?.name === 'NotAllowedError' || e?.name === 'SecurityError' ? '需要文件夹访问权限，请点击刷新重新授权，或重新选择文件夹。' :
+    e?.name === 'SecurityError' ? '浏览器安全限制阻止了文件夹访问。请在独立的 HTTPS 页面中直接点击选择；嵌入式或受限浏览器可能不支持此操作。' :
+    e?.name === 'NotAllowedError' ? '浏览器未允许读取文件夹。请点击刷新重新授权，或重新选择文件夹。' :
     '无法读取原始文件。请确认磁盘已连接、云端文件已下载，再点击刷新。';
 
   async function database() {

@@ -183,3 +183,22 @@ test('late cancelled preparation cannot replace or autoplay over a new track', a
   assert.equal(h.urls.size,1); assert.equal(h.events.at(-1).currentTrackId,'new.mp3');
   h.gateway.dispose();
 });
+test('pickFolder invokes native picker synchronously before returning its promise', async () => {
+  let resolve;
+  const h = harness({picker:()=>new Promise(r=>resolve=r)});
+  await h.gateway.initialize();
+  const pending = h.gateway.command('pickFolder');
+  assert.equal(h.picked,1); // No timer/microtask/await occurs before picker invocation.
+  resolve(directory({})); await pending; h.gateway.dispose();
+});
+test('picker security restriction is distinct from permission denial and does not silently fall back', async () => {
+  const h = harness({picker:()=>{throw {name:'SecurityError'};}});
+  await h.gateway.initialize(); await h.gateway.command('pickFolder');
+  assert.match(h.events.at(-1).message,/安全限制/);
+  assert.match(h.events.at(-1).message,/HTTPS/);
+  assert.equal(h.input,undefined); h.gateway.dispose();
+  const denied = harness({picker:()=>{throw {name:'NotAllowedError'};}});
+  await denied.gateway.initialize(); await denied.gateway.command('pickFolder');
+  assert.match(denied.events.at(-1).message,/未允许/);
+  assert.doesNotMatch(denied.events.at(-1).message,/安全限制/); denied.gateway.dispose();
+});

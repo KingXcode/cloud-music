@@ -17,7 +17,7 @@ The browser supports queue advance/previous, seek, volume, repeat one/all/off an
 
 ## Validation
 
-`node --test test/web/music_gateway_test.cjs` exercises sixteen deterministic adapter cases: persisted handle restore without prompts, permission denial, startup/refresh missing references, failed subtree preservation, picker cancellation, cancellation during file retrieval, Blob URL cleanup playback settings, corroborated deletion/provider failure, gesture timing, fallback cancellation, shuffle exhaustion/cycling and stale preparation suppression. These use controlled browser API doubles, not real cloud downloads or manual permission dialogs.
+`node --test test/web/music_gateway_test.cjs` exercises eighteen deterministic adapter cases: persisted handle restore without prompts, permission denial, startup/refresh missing references, failed subtree preservation, picker cancellation, cancellation during file retrieval, Blob URL cleanup playback settings, corroborated deletion/provider failure, gesture timing, fallback cancellation, shuffle exhaustion/cycling stale preparation suppression, synchronous picker invocation and distinct security-policy errors. These use controlled browser API doubles, not real cloud downloads or manual permission dialogs.
 
 `flutter analyze lib/gateway/web_music_gateway.dart` verifies the Dart JS interop wrapper.
 
@@ -29,3 +29,7 @@ Manual browser acceptance checklist:
 4. Remove one file and reload: it should appear missing. With a healthy sibling still present, explicit Refresh should remove that entry. If the folder is completely empty, the browser conservatively retains unknown references. Disconnect a whole disk and refresh: retain the library with a warning.
 5. Play a large/cloud-placeholder file, cancel while loading, then select a different track. No stale playback should begin. Confirm unsupported codecs report a recoverable error.
 6. Inspect network/storage: no audio requests to a server, no stored audio blobs, only folder handle plus text metadata/preferences. Browser/OS providers may independently fetch cloud originals outside this app.
+
+### Picker diagnostics
+
+The UI/controller/interop path invokes `showDirectoryPicker` without an earlier await. The adapter tests assert synchronous picker invocation. A `SecurityError` is presented distinctly from `NotAllowedError`: it can reflect missing transient activation, a restricted origin/embedding context or browser policy, and must not be described as the user refusing file permission. Remote/automated browser behavior is not proof of ordinary desktop Chrome behavior. No automatic alternate picker is attempted after a security denial.
