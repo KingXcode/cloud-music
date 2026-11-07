@@ -138,9 +138,13 @@ class _LibraryPageState extends State<_LibraryPage> {
                             ),
                           ),
                         IconButton(
-                          tooltip: '选择或更换音乐文件夹',
+                          tooltip: s.selectsFiles ? '选择或更换音乐文件' : '选择或更换音乐文件夹',
                           onPressed: c.isBusy ? null : c.pickFolder,
-                          icon: const Icon(Icons.create_new_folder_outlined),
+                          icon: Icon(
+                            s.selectsFiles
+                                ? Icons.audio_file_outlined
+                                : Icons.create_new_folder_outlined,
+                          ),
                         ),
                       ],
                     ),
@@ -184,7 +188,9 @@ class _LibraryPageState extends State<_LibraryPage> {
                                       SizedBox(height: short ? 2 : 8),
                                       Text(
                                         s.folderName == null
-                                            ? '从你的文件夹开始，让音乐回到身边。'
+                                            ? (s.selectsFiles
+                                                  ? '选择音乐文件，让音乐回到身边。'
+                                                  : '从你的文件夹开始，让音乐回到身边。')
                                             : '${s.folderName} · ${s.tracks.length} 首歌曲',
                                         style: const TextStyle(color: _muted),
                                       ),
@@ -221,7 +227,9 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           ),
                                           const SizedBox(width: 8),
                                           IconButton(
-                                            tooltip: '刷新资料库',
+                                            tooltip: s.selectsFiles
+                                                ? '重新选择音乐文件'
+                                                : '刷新资料库',
                                             onPressed:
                                                 s.folderName == null || c.isBusy
                                                 ? null
@@ -253,6 +261,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                   hasScrollBody: false,
                                   child: _EmptyLibrary(
                                     hasFolder: s.folderName != null,
+                                    filesOnly: s.selectsFiles,
                                     busy: c.isBusy,
                                     onPick: c.pickFolder,
                                     onRefresh: c.refresh,
@@ -345,11 +354,12 @@ class _LibraryPageState extends State<_LibraryPage> {
 class _EmptyLibrary extends StatelessWidget {
   const _EmptyLibrary({
     required this.hasFolder,
+    required this.filesOnly,
     required this.busy,
     required this.onPick,
     required this.onRefresh,
   });
-  final bool hasFolder, busy;
+  final bool hasFolder, filesOnly, busy;
   final VoidCallback onPick, onRefresh;
   @override
   Widget build(BuildContext context) => Padding(
@@ -368,7 +378,9 @@ class _EmptyLibrary extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 390),
           child: Text(
-            hasFolder
+            filesOnly
+                ? '在“文件”中打开音乐所在位置，可多选歌曲。\n刷新网页后需重新选择，音频不会上传。'
+                : hasFolder
                 ? '将音频放进所选文件夹后刷新，或选择另一个文件夹。'
                 : '选择 iCloud Drive 或设备上的音乐文件夹。\n直接聆听原文件，无需重新导入资料库。',
             textAlign: TextAlign.center,
@@ -378,15 +390,23 @@ class _EmptyLibrary extends StatelessWidget {
         const SizedBox(height: 28),
         FilledButton.icon(
           onPressed: busy ? null : onPick,
-          icon: const Icon(Icons.folder_open_rounded),
-          label: Text(hasFolder ? '更换音乐文件夹' : '选择音乐文件夹'),
+          icon: Icon(
+            filesOnly ? Icons.audio_file_outlined : Icons.folder_open_rounded,
+          ),
+          label: Text(
+            filesOnly
+                ? '选择音乐文件（可多选）'
+                : hasFolder
+                ? '更换音乐文件夹'
+                : '选择音乐文件夹',
+          ),
           style: FilledButton.styleFrom(minimumSize: const Size(220, 56)),
         ),
         if (hasFolder)
           TextButton.icon(
             onPressed: busy ? null : onRefresh,
             icon: const Icon(Icons.refresh),
-            label: const Text('刷新资料库'),
+            label: Text(filesOnly ? '重新选择音乐文件' : '刷新资料库'),
           ),
         const SizedBox(height: 18),
         const Text(

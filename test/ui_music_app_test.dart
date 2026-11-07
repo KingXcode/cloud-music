@@ -237,4 +237,30 @@ void main() {
     expect(c.cancelled, 1);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('iPhone file selection label stays usable on a compact screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final snapshot = LibrarySnapshot.fromMap({
+      'sourceKind': 'web',
+      'selectionMode': 'files',
+    });
+    expect(snapshot.selectsFiles, isTrue);
+    final c = FakeController(snapshot);
+    await tester.pumpWidget(MusicApp(controller: c));
+    await tester.pumpAndSettle();
+    expect(find.text('选择音乐文件（可多选）'), findsOneWidget);
+    expect(find.text('选择音乐文件夹'), findsNothing);
+    expect(find.byTooltip('选择或更换音乐文件'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('选择音乐文件（可多选）'));
+    await tester.tap(find.text('选择音乐文件（可多选）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('选择音乐文件（可多选）'));
+    expect(c.picked, 2);
+    expect(tester.takeException(), isNull);
+  });
 }

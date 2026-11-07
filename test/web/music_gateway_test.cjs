@@ -5,12 +5,17 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('web/music_gateway.js', 'utf8');
 const tick = () => new Promise(r => setTimeout(r, 20));
-function harness({handle = null, cached = null, picker} = {}) {
+function harness({handle = null, cached = null, picker, browser = {}, directoryInput = true, clickError, blockedDatabase = false} = {}) {
   const events = [], urls = new Set(), revoked = [];
   let picked = 0, audio, input;
   const document = {body: {append() {}}, createElement() {
-    input = {listeners: {}, files: [], setAttribute() {}, style: {}, remove() {}, click() {},
-      addEventListener(name, callback) {this.listeners[name] = callback;}}; return input;
+    const element = {listeners: {}, files: [], attributes: {}, style: {}, removed: false,
+      setAttribute(name, value) {this.attributes[name] = value;},
+      remove() {this.removed = true;},
+      click() {input = this; if (clickError) throw clickError;},
+      addEventListener(name, callback) {this.listeners[name] = callback;}};
+    if (directoryInput) element.webkitdirectory = false;
+    return element;
   }};
   class FakeAudio {
     constructor() { audio = this; this.listeners = {}; this.paused = true; this.currentTime = 0; this.duration = 42; }
@@ -30,7 +35,7 @@ function harness({handle = null, cached = null, picker} = {}) {
     createObjectURL() { const u = 'blob:' + Math.random(); urls.add(u); return u; },
     revokeObjectURL(u) {urls.delete(u); revoked.push(u);}
   }, localStorage: {getItem: () => cached && JSON.stringify(cached), setItem: (_, v) => {cached = JSON.parse(v);}},
-  indexedDB: {open() { const r = {}; setTimeout(() => {r.result = db; r.onsuccess();}, 0); return r;}}, window: {}};
+  indexedDB: {open() { const r = {}; if (!blockedDatabase) setTimeout(() => {r.result = db; r.onsuccess();}, 0); return r;}}, window: {navigator: browser}};
   if (picker) context.window.showDirectoryPicker = async () => {picked++; return picker();};
   vm.runInNewContext(source, context);
   const gateway = context.window.createCloudMusicGateway(s => events.push(s));
@@ -201,4 +206,107 @@ test('picker security restriction is distinct from permission denial and does no
   await denied.gateway.initialize(); await denied.gateway.command('pickFolder');
   assert.match(denied.events.at(-1).message,/未允许/);
   assert.doesNotMatch(denied.events.at(-1).message,/安全限制/); denied.gateway.dispose();
+});
+
+const iphone = {userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3 like Mac OS X)', platform: 'iPhone', maxTouchPoints: 5};
+const selectedFile = (name, path = '') => ({name, webkitRelativePath: path, type: 'audio/mpeg'});
+
+test('iPhone uses multi-file selection and the command completes even when no picker event arrives', async () => {
+  const h = harness({browser: iphone});
+  assert.equal((await h.gateway.initialize()).selectionMode, 'files');
+  const result = await Promise.race([h.gateway.command('pickFolder').then(() => 'ready'), tick().then(() => 'locked')]);
+  assert.equal(result, 'ready');
+  assert.equal(h.input.multiple, true);
+  assert.equal(h.input.attributes.webkitdirectory, undefined);
+  assert.match(h.input.accept, /audio\/\*/);
+  const previous = h.input;
+  await h.gateway.command('pickFolder');
+  assert.notEqual(h.input, previous);
+  assert.equal(previous.removed, true);
+  previous.files = [selectedFile('stale.mp3')]; previous.listeners.change();
+  assert.equal(h.events.length, 0);
+  h.input.files = [selectedFile('current.mp3')]; h.input.listeners.change();
+  assert.equal(h.events.at(-1).tracks[0].id, 'current.mp3');
+  await h.gateway.command('play', {id: 'current.mp3'});
+  assert.equal(h.events.at(-1).isPlaying, true);
+  h.gateway.dispose();
+});
+test('iPad desktop identity and browsers without directory input support use files', async () => {
+  for (const options of [
+    {browser: {userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5}},
+    {directoryInput: false},
+    {browser: iphone, picker: () => {throw new Error('must not use a directory picker');}}
+  ]) {
+    const h = harness(options);
+    assert.equal((await h.gateway.initialize()).selectionMode, 'files');
+    await h.gateway.command('pickFolder');
+    assert.equal(h.input.attributes.webkitdirectory, undefined);
+    assert.equal(h.picked, 0); h.gateway.dispose();
+  }
+});
+test('desktop directory fallback completes without events and preserves nested paths', async () => {
+  const h = harness();
+  assert.equal((await h.gateway.initialize()).selectionMode, 'folder');
+  await h.gateway.command('pickFolder');
+  assert.equal(h.input.attributes.webkitdirectory, '');
+  h.input.files = [selectedFile('track.mp3', 'Music/Album/track.mp3')];
+  h.input.listeners.change();
+  assert.equal(h.events.at(-1).folderName, 'Music');
+  assert.equal(h.events.at(-1).tracks[0].id, 'Album/track.mp3');
+  await tick();
+  assert.equal(h.events.at(-1).tracks[0].id, 'Album/track.mp3');
+  assert.doesNotMatch(h.events.at(-1).message, /没有可恢复/);
+  h.gateway.dispose();
+});
+test('cancel, empty selection and unsupported files preserve current playback and allow retry', async () => {
+  const h = harness({browser: iphone});
+  await h.gateway.initialize(); await h.gateway.command('pickFolder');
+  h.input.files = [selectedFile('kept.mp3')]; h.input.listeners.change();
+  await h.gateway.command('play', {id: 'kept.mp3'});
+  const src = h.audio.src;
+  for (const outcome of ['cancel', 'empty', 'unsupported']) {
+    await h.gateway.command('pickFolder');
+    h.input.files = outcome === 'unsupported' ? [{name: 'notes.txt', type: 'text/plain'}] : [];
+    h.input.listeners[outcome === 'cancel' ? 'cancel' : 'change']();
+    assert.equal(h.audio.src, src);
+    assert.equal(h.events.at(-1).tracks[0].id, 'kept.mp3');
+    assert.equal(h.events.at(-1).isPlaying, true);
+  }
+  assert.match(h.events.at(-1).message, /没有找到.*音频/);
+  h.gateway.dispose();
+});
+test('selected files publish immediately even when IndexedDB never responds; duplicate names stay playable', async () => {
+  const h = harness({browser: iphone, blockedDatabase: true});
+  await h.gateway.initialize(); await h.gateway.command('pickFolder');
+  h.input.files = [selectedFile('same.mp3'), selectedFile('same.mp3'), {name: 'notes.txt', type: 'text/plain'}];
+  h.input.listeners.change();
+  const snapshot = h.events.at(-1);
+  assert.equal(snapshot.folderName, '已选音乐文件');
+  assert.equal(snapshot.tracks.length, 2);
+  assert.equal(new Set(snapshot.tracks.map(t => t.id)).size, 2);
+  assert.equal(h.cached.tracks.length, 2);
+  await h.gateway.command('play', {id: snapshot.tracks[1].id});
+  assert.equal(h.events.at(-1).isPlaying, true); h.gateway.dispose();
+});
+test('iPhone reload explains file reselection and refresh opens another file picker', async () => {
+  const h = harness({browser: iphone, cached: {folderName: '已选音乐文件', tracks: [{id: 'old.mp3', relativePath: 'old.mp3'}]}});
+  const initial = await h.gateway.initialize();
+  assert.equal(initial.tracks[0].status, 'unknown');
+  assert.match(initial.message, /重新选择音乐文件/);
+  await h.gateway.command('play', {id: 'old.mp3'});
+  assert.match(h.events.at(-1).message, /重新选择音乐文件/);
+  await h.gateway.command('refresh');
+  assert.equal(h.input.multiple, true);
+  assert.equal(h.input.attributes.webkitdirectory, undefined); h.gateway.dispose();
+});
+test('fallback click error is visible and disposal ignores a late selection', async () => {
+  const h = harness({browser: iphone, clickError: {name: 'SecurityError'}});
+  await h.gateway.initialize(); await h.gateway.command('pickFolder');
+  assert.match(h.events.at(-1).message, /安全限制/);
+  assert.equal(h.input.removed, true); h.gateway.dispose();
+  const late = harness({browser: iphone});
+  await late.gateway.initialize(); await late.gateway.command('pickFolder');
+  late.gateway.dispose();
+  late.input.files = [selectedFile('late.mp3')]; late.input.listeners.change();
+  assert.equal(late.events.length, 0); assert.equal(late.urls.size, 0);
 });

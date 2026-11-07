@@ -37,8 +37,15 @@
 
   window.createCloudMusicGateway = listener => {
     const audio = new Audio();
+    const browser = window.navigator || {};
+    // iPadOS may identify as macOS. Even where directory inputs are supported,
+    // individual files are the more reliable path through iOS file providers.
+    const appleMobile = /iPhone|iPad|iPod/.test(browser.userAgent || '') ||
+      (browser.platform === 'MacIntel' && browser.maxTouchPoints > 1);
+    const filesOnly = appleMobile || (typeof window.showDirectoryPicker !== 'function' &&
+      !('webkitdirectory' in document.createElement('input')));
     audio.preload = 'metadata';
-    const state = {folderName: null, sourceKind: 'web', tracks: [], currentTrackId: null,
+    const state = {folderName: null, sourceKind: 'web', selectionMode: filesOnly ? 'files' : 'folder', tracks: [], currentTrackId: null,
       isPlaying: false, isLoading: false, isScanning: false, shuffle: false,
       positionMs: 0, durationMs: 0, repeatMode: 'off', volume: 1, message: null};
     let root = null, entries = new Map(), disposed = false, initialized = false;
@@ -190,46 +197,73 @@
       emit(true);
     }
 
+    function acceptFiles(files) {
+      const next = new Map(), tracks = [];
+      for (const file of files) {
+        if (!extensions.test(file.name) && !file.type?.startsWith('audio/')) continue;
+        const path = file.webkitRelativePath?.split('/').slice(1).join('/') || file.name;
+        // A multi-file selection can contain equal names from different sources.
+        let id = path, duplicate = 1;
+        while (next.has(id)) id = `${path} [${++duplicate}]`;
+        next.set(id, {file});
+        tracks.push({id, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '',
+          relativePath: path, status: 'unknown', durationMs: 0});
+      }
+      if (!tracks.length) {
+        state.message = '没有找到可识别的音频文件。请选择 MP3、M4A 等音乐文件；已保留原资料库。';
+        emit(); return;
+      }
+      ++scanGeneration; clearAudio(); root = null; history.length = 0; shuffleVisited.clear();
+      entries = next;
+      state.folderName = filesOnly ? '已选音乐文件' :
+        (files[0].webkitRelativePath?.split('/')[0] || '已选音乐文件');
+      state.currentTrackId = null;
+      state.tracks = tracks.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
+      state.message = filesOnly
+        ? '已选择音乐文件。重新打开网页后需再次选择，音频不会上传。iCloud 文件可能先由系统下载。'
+        : '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。音频不会上传。';
+      // Persisting a cleared handle must not hold the UI hostage to IndexedDB.
+      void savedHandle(null, true).catch(() => {});
+      emit(true);
+    }
     function fallbackPick() {
-      return new Promise(resolve => {
-        const input = document.createElement('input');
-        input.type = 'file'; input.multiple = true;
-        input.setAttribute('webkitdirectory', ''); input.style.display = 'none';
-        document.body.append(input);
-        let settled = false;
-        const finish = files => {
-          if (settled) return; settled = true; input.remove(); pickerCleanup = null; resolve(files);
-        };
-        pickerCleanup = () => finish(null);
-        input.addEventListener('cancel', () => finish(null), {once: true});
-        input.addEventListener('change', () => finish(Array.from(input.files || [])), {once: true});
-        input.click();
-      });
+      // Some iOS/provider combinations send neither change nor cancel. Do not
+      // await these events: the command ends after opening the native sheet.
+      // A later user gesture can always discard an abandoned input and retry.
+      pickerCleanup?.();
+      ++scanGeneration;
+      const input = document.createElement('input');
+      input.type = 'file'; input.multiple = true; input.tabIndex = -1;
+      if (filesOnly) input.accept = 'audio/*,.mp3,.m4a,.aac,.wav,.wave,.flac,.ogg,.oga,.opus,.aif,.aiff,.alac,.mp4,.webm';
+      else input.setAttribute('webkitdirectory', '');
+      input.setAttribute('aria-hidden', 'true');
+      Object.assign(input.style, {position: 'fixed', left: '-10000px', width: '1px', height: '1px', opacity: '0'});
+      document.body.append(input);
+      let settled = false;
+      const cleanup = () => finish(null);
+      const finish = files => {
+        if (settled) return;
+        settled = true; input.remove();
+        if (pickerCleanup === cleanup) pickerCleanup = null;
+        if (disposed || !files?.length) return;
+        try { acceptFiles(files); }
+        catch (e) { state.message = messageFor(e); emit(); }
+      };
+      pickerCleanup = cleanup;
+      input.addEventListener('cancel', () => finish(null), {once: true});
+      input.addEventListener('change', () => finish(Array.from(input.files || [])), {once: true});
+      try { input.click(); }
+      catch (e) { cleanup(); throw e; }
     }
     async function pick() {
       if (picking || state.isScanning || permissionBusy) return;
       picking = true;
       try {
-        if ('showDirectoryPicker' in window) {
+        if (!filesOnly && typeof window.showDirectoryPicker === 'function') {
           const handle = await window.showDirectoryPicker({mode: 'read', id: 'cloud-music-library'});
           await scan(handle, true, true);
         } else {
-          const files = await fallbackPick();
-          if (disposed || !files?.length) return;
-          ++scanGeneration; clearAudio(); root = null; history.length = 0;
-          const next = new Map(), tracks = [];
-          const folderName = (files[0].webkitRelativePath || files[0].name).split('/')[0];
-          for (const file of files) {
-            if (!extensions.test(file.name) && !file.type.startsWith('audio/')) continue;
-            const path = file.webkitRelativePath?.split('/').slice(1).join('/') || file.name;
-            next.set(path, {file});
-            tracks.push({id: path, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '', relativePath: path, status: 'unknown', durationMs: 0});
-          }
-          entries = next; state.folderName = folderName; state.currentTrackId = null;
-          state.tracks = tracks.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
-          state.message = '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。音频不会上传。';
-          try { await savedHandle(null, true); } catch (_) {}
-          emit(true);
+          fallbackPick();
         }
       } catch (e) { if (!aborted(e)) { state.message = messageFor(e); emit(); } }
       finally { picking = false; }
@@ -255,7 +289,7 @@
       if (!id || disposed) return;
       const entry = entries.get(id);
       if (!entry) {
-        state.message = '请点击刷新授权原文件夹；此浏览器若不支持记住文件夹，请重新选择。'; emit(); return;
+        state.message = filesOnly ? '请重新选择音乐文件以恢复播放。' : '请点击刷新授权原文件夹；此浏览器若不支持记住文件夹，请重新选择。'; emit(); return;
       }
       if (!continueCycle) shuffleVisited.clear();
       shuffleVisited.add(id);
@@ -321,9 +355,15 @@
             audio.volume = state.volume;
           }
         } catch (_) {}
+        if (filesOnly) {
+          if (state.folderName) state.message = '请重新选择音乐文件以恢复播放；网页不会保存音频或持续读取 iCloud 文件夹。';
+          return snapshot();
+        }
+        // Capture the revision before scheduling: a fresh file selection must win
+        // even when it happens before this startup task gets its first turn.
+        const generation = scanGeneration;
         // Return cached metadata immediately. Restore/validate handles in background.
         setTimeout(async () => {
-          const generation = scanGeneration;
           try {
             const handle = await savedHandle();
             if (disposed || generation !== scanGeneration || picking) return;

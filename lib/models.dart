@@ -53,6 +53,7 @@ class LibrarySnapshot {
   const LibrarySnapshot({
     this.folderName,
     this.sourceKind = '',
+    this.selectionMode = 'folder',
     this.tracks = const [],
     this.currentTrackId,
     this.isPlaying = false,
@@ -67,7 +68,8 @@ class LibrarySnapshot {
     this.message,
   });
   final String? folderName, currentTrackId, message;
-  final String sourceKind;
+  final String sourceKind, selectionMode;
+  bool get selectsFiles => selectionMode == 'files';
   final List<Track> tracks;
   final bool isPlaying, isLoading, isScanning, shuffle;
   final Duration position, duration;
@@ -80,6 +82,7 @@ class LibrarySnapshot {
   factory LibrarySnapshot.fromMap(Map<Object?, Object?> map) => LibrarySnapshot(
     folderName: map['folderName'] as String?,
     sourceKind: map['sourceKind'] as String? ?? '',
+    selectionMode: map['selectionMode'] as String? ?? 'folder',
     tracks: (map['tracks'] as List? ?? const [])
         .whereType<Map>()
         .map((t) => Track.fromMap(Map<Object?, Object?>.from(t)))

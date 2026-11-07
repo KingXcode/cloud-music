@@ -1,12 +1,13 @@
 # Shared platform bridge contract
 
 Method channel: `cloud_music/control`. Event channel: `cloud_music/events`.
-All events are complete snapshot maps. All methods may return the current snapshot; Dart ignores mutation return values and consumes events. `initialize` must return a loaded snapshot immediately and then validate existing tracks asynchronously, preserving missing entries on startup. `pickFolder` cancellation retains the previous library. Repeated busy calls must be safe. Playback and source changes must invalidate pending asynchronous operations.
+All events are complete snapshot maps. All methods may return the current snapshot; Dart ignores mutation return values and consumes events. `initialize` must return a loaded snapshot immediately and then validate existing tracks asynchronously, preserving missing entries on startup. `pickFolder` cancellation retains the previous library. Repeated busy calls must be safe. The Web input fallback completes the picker command after opening the sheet, then publishes a successful selection through snapshot events; callers must not require a selection in the command result. Playback and source changes must invalidate pending asynchronous operations.
 
 Methods: `initialize`, `pickFolder`, `refresh`, `play` (`id`: string), `togglePlayback`, `pause`, `next`, `previous`, `seek` (`positionMs`: int), `setShuffle` (`enabled`: bool), `setRepeat` (`mode`: `off`/`all`/`one`), `setVolume` (`volume`: double 0–1), `cancelLoading`.
 
 Snapshot fields:
-- `folderName`: string or null, `sourceKind`: `apple` or `android`
+- `folderName`: string or null, `sourceKind`: `apple`, `android` or `web`
+- `selectionMode`: optional `folder` (default) or `files`; the Web adapter uses `files` for iPhone/iPad and browsers without directory selection
 - `tracks`: array of maps, each with `id`: stable string, `title`: string, `artist`: string (empty allowed), `album`: string (empty allowed), `relativePath`: display string, `status`: `ready`/`cloud`/`offline`/`missing`/`unsupported`/`unknown`, `durationMs`: nonnegative int (0 when unknown)
 - `currentTrackId`: string or null
 - `isPlaying`, `isLoading`, `isScanning`, `shuffle`: bool

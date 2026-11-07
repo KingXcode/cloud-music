@@ -34,7 +34,7 @@ node --test test/web/music_gateway_test.cjs
 flutter run -d chrome
 ```
 
-For a local browser folder picker, serve through localhost or HTTPS. Chrome/Edge desktop have the most complete persistent File System Access support. A folder-input fallback is available in other compatible browsers. See `docs/WEB_PLAYBACK.md`.
+For a local browser folder picker, serve through localhost or HTTPS. Chrome/Edge desktop have the most complete persistent File System Access support. A folder-input fallback is available in other compatible desktop browsers; iPhone/iPad use multiple audio-file selection with clear reselection guidance. See `docs/WEB_PLAYBACK.md`.
 
 ```sh
 flutter run -d macos       # macOS + Xcode required
@@ -68,6 +68,6 @@ No certificates, production signing keys or user music are stored in this reposi
 
 ## Validation status at source delivery
 
-Passed in the cloud workspace: Flutter analyzer, 16 unit/widget tests (including compact/landscape/wide and large-text layouts), 18 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
+Passed in the cloud workspace: Flutter analyzer, 17 unit/widget tests (including compact/landscape/wide and large-text layouts), 25 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
 
 Live Web smoke tests verified the published layout, full-player navigation, visible provider errors, and repeat/shuffle preference restoration. The automated browser could not open the system folder picker; real directory selection, audio playback and handle restoration remain unverified there.
