@@ -1,12 +1,12 @@
-# This file configures the analyzer, which statically analyzes Dart code to
-# check for errors, warnings, and lints.
+# 此文件配置 Dart 静态分析器，
+# 用于检查代码错误、警告和代码规范问题。
 #
-# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
-# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
-# invoked from the command line by running `flutter analyze`.
+# 分析器发现的问题会显示在支持 Dart 的 IDE 界面中
+# （https://dart.dev/tools#ides-and-editors）。也可以在命令行执行
+# `flutter analyze` 来运行分析器。
 
-# The following line activates a set of recommended lints for Flutter apps,
-# packages, and plugins designed to encourage good coding practices.
+# 以下配置为 Flutter 应用、包和插件启用一组推荐规范，
+# 以促进良好的编码实践。
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
@@ -18,19 +18,19 @@ analyzer:
     - web/**
 
 linter:
-  # The lint rules applied to this project can be customized in the
-  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
-  # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
+  # 可在下方自定义本项目的代码规范规则，
+  # 禁用上方引入的 `package:flutter_lints/flutter.yaml` 中的规则，
+  # 或启用其他规则。全部可用规则及其文档
+  # 见 https://dart.dev/lints。
   #
-  # Instead of disabling a lint rule for the entire project in the
-  # section below, it can also be suppressed for a single line of code
-  # or a specific dart file by using the `// ignore: name_of_lint` and
-  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
-  # producing the lint.
+  # 除了在下方为整个项目禁用规则，
+  # 也可在触发规范提示的代码行或 Dart 文件中，
+  # 使用 `// ignore: name_of_lint` 或
+  # `// ignore_for_file: name_of_lint`，
+  # 仅对单行或指定文件屏蔽该规则。
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # avoid_print: false  # 取消注释以禁用 `avoid_print` 规则
+    # prefer_single_quotes: true  # 取消注释以启用 `prefer_single_quotes` 规则
 
-# Additional information about this file can be found at
+# 此文件的更多说明见
 # https://dart.dev/guides/language/analysis-options

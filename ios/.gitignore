@@ -27,7 +27,7 @@ Flutter/flutter_export_environment.sh
 ServiceDefinitions.json
 Runner/GeneratedPluginRegistrant.*
 
-# Exceptions to above rules.
+# 上述规则的例外项。
 !default.mode1v3
 !default.mode2v3
 !default.pbxuser

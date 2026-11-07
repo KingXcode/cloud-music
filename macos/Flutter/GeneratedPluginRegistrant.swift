@@ -1,5 +1,5 @@
 //
-//  Generated file. Do not edit.
+//  自动生成的文件，请勿编辑。
 //
 
 import FlutterMacOS

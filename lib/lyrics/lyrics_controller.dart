@@ -9,8 +9,8 @@ import 'lyrics_factory.dart';
 import 'lyrics_models.dart';
 import 'lyrics_platform.dart';
 
-/// Nothing in selecting/playing a track performs network requests. Only an
-/// explicit, informed search action sends the fields entered by the user.
+/// 选择或播放歌曲不会发起网络请求。只有用户在知情后主动搜索，
+/// 才会发送其填写的字段。
 class LyricsController extends ChangeNotifier {
   LyricsController({LyricsPlatform? platform, DateTime Function()? now})
     : _platform = platform ?? createLyricsPlatform(),
@@ -59,7 +59,7 @@ class LyricsController extends ChangeNotifier {
           );
           if (!doc.isEmpty) _cache.putIfAbsent(entry.key, () => doc);
         } catch (_) {
-          // A bad entry must not prevent other downloaded lyrics from loading.
+          // 无效条目不得阻止其他已下载歌词的加载。
         }
       }
       _document = _cache[_key];
@@ -146,7 +146,7 @@ class LyricsController extends ChangeNotifier {
             }),
           )
           .timeout(const Duration(seconds: 20));
-      // Rate limits belong to this provider, even if the selected track changed.
+      // 即使所选歌曲已变化，限流仍属于当前服务提供方。
       if (response.statusCode == 429 || response.statusCode == 503) {
         _retryAt = _now().add(_retryDelay(response.retryAfter));
         throw const LyricsException('歌词服务繁忙或请求过于频繁，请稍后重试。');
@@ -168,7 +168,7 @@ class LyricsController extends ChangeNotifier {
           final result = LyricsCandidate.fromJson(row as Map<String, dynamic>);
           if (!result.document.isEmpty) results.add(result);
         } catch (_) {
-          // Skip malformed records rather than treating them as valid matches.
+          // 跳过格式错误的记录，避免将其视为有效匹配。
         }
       }
       _candidates = List.unmodifiable(results);
@@ -249,7 +249,7 @@ class LyricsController extends ChangeNotifier {
       _cache.remove(_cache.keys.first);
       raw = _serializeCache();
     }
-    // Serialize writes so a slow earlier save cannot overwrite a later one.
+    // 串行写入，防止先发起但较慢的保存覆盖后续结果。
     final write = _pendingWrite.then((_) => _platform.writeCache(raw));
     _pendingWrite = write.catchError((Object _) {});
     try {
@@ -282,7 +282,7 @@ class LyricsController extends ChangeNotifier {
     return const Duration(seconds: 61);
   }
 
-  // Retry-After HTTP dates use RFC 7231, not ISO-8601. Avoid dart:io on web.
+  // Retry-After 的 HTTP 日期采用 RFC 7231，而非 ISO-8601；Web 端避免使用 dart:io。
   DateTime? _httpDate(String? value) {
     final match = RegExp(
       r'^\w{3}, (\d{2}) (\w{3}) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$',

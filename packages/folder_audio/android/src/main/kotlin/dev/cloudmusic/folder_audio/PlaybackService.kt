@@ -8,7 +8,7 @@ import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.*
 
-/** Standard phone/head-unit media session. No Android Auto requirement or audio cache. */
+/** 标准手机和车机媒体会话，不依赖 Android Auto，也不缓存音频。 */
 class PlaybackService : Service() {
     companion object {
         private var running: PlaybackService? = null

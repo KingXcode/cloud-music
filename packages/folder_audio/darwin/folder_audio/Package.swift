@@ -1,5 +1,5 @@
 // swift-tools-version: 5.9
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-version 声明构建此包所需的最低 Swift 版本。
 
 import PackageDescription
 

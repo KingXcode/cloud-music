@@ -1,5 +1,5 @@
 name: cloud_music
-description: Private original-file music player for Apple devices, Android folders and the web.
+description: 私有音乐播放器，支持 Apple 设备、Android 文件夹及浏览器，直接播放原始音频文件。
 publish_to: none
 version: 0.2.0+3
 environment:

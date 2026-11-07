@@ -126,8 +126,8 @@ internal class AudioEngine private constructor(val context: Context) {
     private fun confirmedAbsent(source: Uri, uri: Uri, signal: CancellationSignal): Boolean {
         try { return !document(uri, signal) } catch (e: SecurityException) { throw e }
         catch (e: Exception) {
-            // For a fully scanned, mounted Android storage volume only, a read-only file-descriptor
-            // not-found result corroborates the missing directory entry. Remote provider errors remain unknown.
+            // 仅对已完整扫描且已挂载的 Android 存储卷，才用只读文件描述符的
+            // 文件不存在结果佐证目录条目缺失。远程文件提供器错误仍视为状态未知。
             if (source.authority != "com.android.externalstorage.documents") throw e
             verifySource(source)
             try { context.contentResolver.openAssetFileDescriptor(uri, "r", signal)?.use { return false }; throw e }
@@ -174,8 +174,8 @@ internal class AudioEngine private constructor(val context: Context) {
                     } catch (e: InterruptedException) { throw e } catch (_: Exception) { result.complete = false }
                 }
                 walk(rootId, "", 0)
-                // Absence from a listing alone is not deletion evidence. Require a second document lookup,
-                // with an entirely successful traversal and root re-validation. Provider failures retain all entries.
+                // 仅在目录列表中缺失不能证明文件已删除，必须再次查询文档，
+                // 并确保完整遍历成功、根目录重新校验通过。文件提供器失败时保留全部条目。
                 if (result.complete && document(root, signal)) {
                     val found = result.songs.map { it.id }.toSet()
                     for (song in old.filter { it.id !in found }) {
@@ -244,7 +244,7 @@ internal class AudioEngine private constructor(val context: Context) {
             }; true
         }
         emit()
-        // Opening a remote DocumentsProvider URI can block: obtain a read-only descriptor off the UI thread.
+        // 打开远程 DocumentsProvider URI 可能阻塞，应在界面线程之外获取只读描述符。
         io.execute {
             try {
                 val descriptor = context.contentResolver.openAssetFileDescriptor(Uri.parse(id), "r", signal)
@@ -277,7 +277,7 @@ internal class AudioEngine private constructor(val context: Context) {
                         }
                     }
                     handler.post { if (token == playGeneration && current == id) { if (!title.isNullOrBlank()) song.title = title; song.artist = artist ?: ""; song.album = album ?: ""; artwork = cover; save(); emit() } }
-                } catch (_: Exception) { /* Metadata is optional; playback still proceeds. */ }
+                } catch (_: Exception) { /* 元数据为可选项，获取失败仍继续播放。 */ }
                 finally { retriever.release() }
                 }
             } catch (_: Exception) { handler.post { if (token == playGeneration && !prepared) { song.status = "offline"; stopPlayer(); save(); notice("音频无法读取，请连接 U 盘或重新授权文件夹。") } } }
@@ -286,7 +286,7 @@ internal class AudioEngine private constructor(val context: Context) {
     private fun resume() {
         if (!prepared) return
         try {
-            // Start the media foreground service before focus (required for target 35+ background focus).
+            // 先启动媒体前台服务再申请音频焦点，以满足目标 API 35 及以上版本的后台焦点要求。
             PlaybackService.start(context)
             if (!requestFocus()) { message = "其他应用正在使用音频，请稍后重试。"; PlaybackService.stop(context); emit(); return }
             applyVolume(); player?.start(); message = null; emit()

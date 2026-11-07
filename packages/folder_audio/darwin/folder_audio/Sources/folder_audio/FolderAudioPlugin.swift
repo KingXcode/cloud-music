@@ -11,7 +11,7 @@ import MediaPlayer
 import Network
 import UniformTypeIdentifiers
 
-// Main-thread-owned bridge state. File I/O is confined to background queues.
+// 桥接状态由主线程管理，文件 I/O 仅在后台队列执行。
 private struct Track: Codable {
     var id: String
     var title: String
@@ -61,8 +61,8 @@ private final class Scope {
 }
 private enum SourceError: Error, Equatable { case unavailable, cancelled, timeout, unsupported }
 
-// AVPlayer reads asynchronously after coordination ends. Register the actual playing
-// URL as a presenter and pause on external writes/moves/deletion. No source writes.
+// AVPlayer 在文件协调结束后仍会异步读取。为实际播放的 URL 注册文件呈现器，
+// 在外部写入、移动或删除时暂停播放，本实现不写入源文件。
 private final class PlaybackPresenter: NSObject, NSFilePresenter {
     let presentedItemURL: URL?
     let presentedItemOperationQueue: OperationQueue = {
@@ -76,7 +76,7 @@ private final class PlaybackPresenter: NSObject, NSFilePresenter {
         DispatchQueue.main.async { self.changed(); completionHandler(nil) }
     }
     func relinquishPresentedItem(toWriter writer: @escaping ((() -> Void)?) -> Void) {
-        // Pause before allowing another process to mutate the playing file.
+        // 允许其他进程修改正在播放的文件之前，先暂停播放。
         DispatchQueue.main.async { self.changed(); writer({}) }
     }
 }
@@ -203,10 +203,10 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         case "initialize":
             if !loaded {
                 loaded = true
-                // The small local metadata index is loaded before initialize returns;
-                // cloud access/validation is always asynchronous.
+                // initialize 返回前加载体积较小的本地元数据索引，
+                // 云端访问和校验始终异步执行。
                 if let data = try? Data(contentsOf: Self.store), let saved = try? JSONDecoder().decode(Library.self, from: data) { library = saved }
-                // Migrate old indexes once; refresh and bookmark renewal retain this identity.
+                // 旧索引仅迁移一次，刷新和书签更新均保留该标识。
                 if library.bookmark != nil, library.sourceIdentity == nil {
                     library.sourceIdentity = UUID().uuidString; save()
                 }
@@ -246,7 +246,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private static var lyricsStore: URL {
         store.deletingLastPathComponent().appendingPathComponent("lyrics-cache.json")
     }
-    // Bound reads even when a provider reports an incorrect or missing file size.
+    // 即使文件提供器报告的文件大小错误或缺失，也要限制读取量。
     private static func readLyrics(_ url: URL, limit: Int) throws -> String {
         let file = try FileHandle(forReadingFrom: url)
         defer { try? file.close() }
@@ -372,7 +372,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         #endif
     }
     private func select(_ url: URL) {
-        // Do not discard the old source until the new bookmark can be saved.
+        // 确认新书签能够保存之前，不丢弃旧来源。
         let request = UUID(); generation = request
         scanToken?.cancel(); scanning = false
         cancelPlayback()
@@ -385,7 +385,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     guard let self = self, self.generation == request else { return }
                     withExtendedLifetime(selectedScope) {
                         self.library.bookmark = data; self.library.folderName = url.lastPathComponent; self.library.volumeUUID = volumeUUID
-                        // Explicit reselection starts a new source, even for the same folder.
+                        // 用户主动重新选择时，即使是同一文件夹，也创建新来源。
                         self.library.sourceIdentity = UUID().uuidString
                         self.library.tracks = []; self.currentID = nil; self.history = []; self.shuffleBag = []; self.shuffleCycleStarted = false
                         self.save(); self.scan(removeMissing: false, discover: true)
@@ -400,8 +400,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         }
     }
 
-    // This option, unlike .withoutChanges, avoids provider materialization.
-    // Bodies may read metadata/list names only, never audio contents.
+    // 此选项可避免文件提供器将内容实体化，.withoutChanges 不具备这一作用。
+    // 闭包中只允许读取元数据或枚举名称，不得读取音频内容。
     private static let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey,
         .isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey, .ubiquitousItemDownloadingErrorKey,
         .contentTypeKey, .volumeUUIDStringKey, .volumeIsLocalKey, .fileResourceIdentifierKey]
@@ -409,8 +409,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         let coordinator = NSFileCoordinator(filePresenter: nil)
         try token.attach(coordinator)
         defer { token.detach(coordinator) }
-        // Cancel presenter waits, without claiming to interrupt an accessor's
-        // provider syscall once it has started. UI deadlines are independent.
+        // 取消对文件呈现器的等待，但无法保证中断访问闭包中已开始的
+        // 文件提供器系统调用。界面超时机制独立运行。
         let timeout = DispatchWorkItem { coordinator.cancel() }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 15, execute: timeout)
         defer { timeout.cancel() }
@@ -429,8 +429,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         guard let outcome = outcome else { throw SourceError.unavailable }
         return try outcome.get()
     }
-    // Selected-song-only availability coordination intentionally permits the
-    // provider to materialize content. Never call this from an index scan.
+    // 仅针对所选歌曲的可用性协调，有意允许文件提供器将内容实体化。
+    // 绝不在索引扫描中调用。
     private static func availableURL(_ url: URL, token: Cancellation) throws -> URL {
         let coordinator = NSFileCoordinator(filePresenter: nil)
         try token.attach(coordinator)
@@ -452,7 +452,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
     private static func missingError(_ error: Error) -> Bool {
         let e = error as NSError
-        // Do not unwrap provider/network errors and reinterpret them as deletion.
+        // 不得将文件提供器或网络错误解包后重新解释为文件已删除。
         return e.domain == NSCocoaErrorDomain && (e.code == NSFileReadNoSuchFileError || e.code == NSFileNoSuchFileError)
     }
     private func scan(removeMissing: Bool, discover: Bool) {
@@ -480,9 +480,9 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 guard rootValues.isDirectory == true, rootValues.isSymbolicLink != true else { throw SourceError.unavailable }
                 if let expectedVolume = expectedVolume, rootValues.volumeUUIDString != expectedVolume { throw SourceError.unavailable }
                 if rootValues.volumeUUIDString == nil || expectedVolume == nil || rootValues.volumeIsLocal != true || rootValues.fileResourceIdentifier == nil || !online {
-                    // Unverified source identity, remote volume or an unavailable
-                    // network path cannot establish deletion. First-run legacy
-                    // indexes learn the volume identity without pruning entries.
+                    // 来源标识未经验证、远程卷或网络路径不可用时，均不能确认删除。
+                    // 旧索引首次运行时只补充卷标识，
+                    // 不清理条目。
                     uncertain.insert(""); issues = true
                 }
                 let old = Dictionary(previous.map { ($0.relativePath, $0) }, uniquingKeysWith: { a, _ in a })
@@ -495,8 +495,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                             let children = try FileManager.default.contentsOfDirectory(at: target, includingPropertiesForKeys: Array(Self.keys), options: [])
                             return (children, Self.status(values) == "ready")
                         }
-                        // An unexpectedly empty provider/volume view is not
-                        // sufficient evidence to clear an existing subtree.
+                        // 文件提供器或存储卷视图意外为空，
+                        // 不足以作为清空已有子树的证据。
                         let prefix = relative.isEmpty ? "" : relative + "/"
                         if listing.0.isEmpty && previous.contains(where: { $0.relativePath.hasPrefix(prefix) }) {
                             uncertain.insert(relative); issues = true
@@ -506,8 +506,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         for child in listing.0 {
                             if token.cancelled { throw SourceError.cancelled }
                             let path = relative.isEmpty ? child.lastPathComponent : relative + "/" + child.lastPathComponent
-                            // Legacy iCloud stubs can be exposed as .name.ext.icloud.
-                            // Never interpret the stub spelling as deletion evidence.
+                            // 旧版 iCloud 占位文件可能显示为 .name.ext.icloud。
+                            // 绝不将占位文件的名称形式作为删除证据。
                             if child.lastPathComponent.hasPrefix(".") && child.pathExtension.lowercased() == "icloud" {
                                 uncertain.insert(relative); issues = true
                                 let name = String(child.deletingPathExtension().lastPathComponent.dropFirst())
@@ -555,8 +555,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                                 _ = try Self.metadata(root.appendingPathComponent(absent), token: token) { try $0.resourceValues(forKeys: Self.keys) }
                             } catch {
                                 if Self.missingError(error) {
-                                    // Recheck the parent while its coordinated read
-                                    // is active; cached names alone are insufficient.
+                                    // 在父目录的协调读取仍有效时重新检查，
+                                    // 仅凭缓存名称不足以作出判断。
                                     do {
                                         let parentURL = parent.isEmpty ? root : root.appendingPathComponent(parent)
                                         confirmed = try Self.metadata(parentURL, token: token) { target in
@@ -577,8 +577,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     else if track.status != "cloud" && track.status != "unsupported" { track.status = "offline" }
                     if !confirmed || !removeMissing { found[path] = track }
                 }
-                // Revalidate source identity after enumeration/removal decisions.
-                // Eject/unmount/replacement during the scan retains the old index.
+                // 枚举及移除判定完成后，重新校验来源标识。
+                // 扫描期间若发生弹出、卸载或替换，则保留旧索引。
                 let finalRoot = try Self.metadata(root, token: token) { try $0.resourceValues(forKeys: Self.keys) }
                 guard finalRoot.isDirectory == true, finalRoot.volumeUUIDString == rootValues.volumeUUIDString else { throw SourceError.unavailable }
                 if let beforeID = rootValues.fileResourceIdentifier as? NSObject {
@@ -589,12 +589,12 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 withExtendedLifetime(scope) {
                     DispatchQueue.main.async {
                         guard let self = self, self.generation == request, !token.cancelled else { return }
-                        // A network loss during the scan invalidates any pending
-                        // removal decisions; retain the previous snapshot instead.
+                        // 扫描期间断网会使所有待执行的移除判定失效，
+                        // 此时保留之前的快照。
                         if online && !self.networkAvailable {
                             self.scanning = false; self.message = "网络状态已变化，已保留曲库，请联网后刷新。"; self.emit(); return
                         }
-                        // Preserve metadata learned while the scan was running.
+                        // 保留扫描运行期间新获取的元数据。
                         let live = Dictionary(self.library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
                         if self.library.volumeUUID == nil { self.library.volumeUUID = rootValues.volumeUUIDString }
                         self.library.tracks = tracks.map { candidate in
@@ -657,8 +657,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
     private func play(_ id: String, remember: Bool = true) {
         guard let track = library.tracks.first(where: { $0.id == id }), let bookmark = library.bookmark else { return }
-        // Relative paths are read from our own metadata but are still validated to
-        // prevent a damaged index from escaping the user's selected directory.
+        // 相对路径虽来自本应用的元数据，仍须校验，
+        // 防止损坏的索引越出用户选择的目录。
         let pieces = track.relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard !pieces.isEmpty, !pieces.contains(where: { $0 == ".." || $0 == "." || $0.isEmpty }) else {
             message = "文件路径无效，请刷新曲库。"; emit(); return
@@ -669,8 +669,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         let token = Cancellation(); playToken = token
         let request = generation
         emit()
-        // Covers bookmark resolution, provider waits and asset loading, not only
-        // the polling loop. Cancel invalidates results and cancels coordinators.
+        // 超时覆盖书签解析、文件提供器等待和媒体资源加载，不仅限于轮询。
+        // 取消时使结果失效，并取消协调器。
         DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [weak self] in
             guard let self = self, !token.cancelled, self.generation == request, self.loading else { return }
             self.failPlayback(SourceError.timeout, id: id)
@@ -690,8 +690,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     if let error = value.ubiquitousItemDownloadingError { throw error }
                     if Self.status(value) != "cloud" { break }
                     if !requested {
-                        // Explicit download initiation is separate from metadata
-                        // coordination. It requests content but does not read it.
+                        // 显式发起下载与元数据协调相互独立，
+                        // 此处只请求内容，不读取内容。
                         guard !token.cancelled else { throw SourceError.cancelled }
                         try FileManager.default.startDownloadingUbiquitousItem(at: url)
                         requested = true
@@ -727,8 +727,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         }
     }
     private func loadAsset(_ asset: AVURLAsset, id: String, token: Cancellation, request: UUID) {
-        // Legacy asynchronous key loading keeps deployment compatibility with
-        // iOS 15/macOS 12. No metadata is loaded for unselected songs.
+        // 使用旧式异步键加载，以保持对 iOS 15/macOS 12 的部署兼容性。
+        // 不为未选中的歌曲加载元数据。
         asset.loadValuesAsynchronously(forKeys: ["playable", "duration", "commonMetadata"]) { [weak self] in
             var error: NSError?
             let state = asset.statusOfValue(forKey: "playable", error: &error)
@@ -752,7 +752,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 }
                 self.player.replaceCurrentItem(with: item)
                 self.loadMetadata(asset, id: id, token: token)
-                // AVPlayerItem readiness may require asynchronous provider reads.
+                // AVPlayerItem 就绪可能需要异步读取文件提供器内容。
                 DispatchQueue.main.asyncAfter(deadline: .now() + 90) { [weak self] in
                     guard let self = self, !token.cancelled, self.loading, self.player.currentItem === item else { return }
                     self.failPlayback(SourceError.timeout, id: id)
@@ -771,8 +771,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     case .commonKeyArtist: artist = metadata.stringValue
                     case .commonKeyAlbumName: album = metadata.stringValue
                     case .commonKeyArtwork:
-                        // Keep bridge payloads bounded. Oversized embedded artwork
-                        // is omitted rather than risking high memory/IPC pressure.
+                        // 限制桥接数据大小，忽略过大的内嵌封面，
+                        // 避免造成过高的内存或 IPC 压力。
                         if let bytes = metadata.dataValue, bytes.count <= 2_000_000 { art = bytes }
                     default: break
                     }
@@ -791,8 +791,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
     private func failPlayback(_ error: Error, id: String) {
         let e = error as NSError
-        // Playback errors alone never prove deletion. Only conservative scans may
-        // mark/remove missing entries; decoder failures remain in the index.
+        // 仅凭播放错误不能证明删除。只有保守扫描才能标记或移除缺失条目，
+        // 解码失败的歌曲仍保留在索引中。
         let unsupported = (error as? SourceError) == .unsupported ||
             (e.domain == AVFoundationErrorDomain && [AVError.Code.fileFormatNotRecognized.rawValue, AVError.Code.fileFailedToParse.rawValue, AVError.Code.decoderNotFound.rawValue].contains(e.code))
         cancelPlayback()

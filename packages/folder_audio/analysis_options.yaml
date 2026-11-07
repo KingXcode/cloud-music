@@ -10,5 +10,5 @@ analyzer:
     - macos/**
     - linux/**
 
-# Additional information about this file can be found at
+# 此文件的更多说明见
 # https://dart.dev/guides/language/analysis-options

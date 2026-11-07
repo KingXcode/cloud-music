@@ -16,8 +16,8 @@ class NativeLyricsPlatform implements LyricsPlatform {
 
   @override
   Future<LyricsHttpResponse> get(Uri uri) async {
-    // The controller constructs the fixed HTTPS LRCLIB destination; never accept
-    // redirects that could silently disclose song metadata to another service.
+    // 控制器构造固定的 LRCLIB HTTPS 目标地址，拒绝重定向，
+    // 避免在用户不知情时向其他服务泄露歌曲元数据。
     if (uri.scheme != 'https' || uri.host != 'lrclib.net') {
       throw const FormatException('Unsupported lyrics provider');
     }

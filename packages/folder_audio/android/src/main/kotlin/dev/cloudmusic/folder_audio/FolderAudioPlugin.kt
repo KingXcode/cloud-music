@@ -13,7 +13,7 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.*
 
-/** Flutter adapter only: the process-level engine survives activity recreation. */
+/** 仅负责 Flutter 适配；进程级引擎在 Activity 重建后仍可继续存在。 */
 class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler, PluginRegistry.ActivityResultListener {
     private lateinit var methods: MethodChannel
@@ -25,7 +25,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     private var lyricsIO = Executors.newSingleThreadExecutor()
     @Volatile private var engineGeneration = 0
     private companion object {
-        // Reattachment may overlap a finishing atomic write from the old executor.
+        // 重新附着时，旧执行器可能仍在完成原子写入。
         val lyricsCacheLock = Any()
     }
     private val main by lazy { Handler(Looper.getMainLooper()) }
@@ -77,7 +77,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                     try {
                         activity.startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE)
-                            // LRC has no consistently registered MIME type. Validate extension after selection.
+                            // LRC 没有统一注册的 MIME 类型，选择完成后再校验扩展名。
                             type = "*/*"
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }, 7413)
@@ -98,8 +98,8 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     override fun onDetachedFromEngine(b: FlutterPlugin.FlutterPluginBinding) {
         finishLyrics(error = "应用已关闭，请重试导入。")
         engineGeneration++
-        // Drain without interrupting an in-flight atomic write; queued stale cache
-        // operations fail their generation check. The worker exits once drained.
+        // 等待任务执行完毕，不中断正在进行的原子写入；队列中过期的缓存操作
+        // 无法通过代次检查，工作线程在队列清空后退出。
         lyricsIO.shutdown()
         methods.setMethodCallHandler(null); events.setStreamHandler(null); engine.sink = null
     }

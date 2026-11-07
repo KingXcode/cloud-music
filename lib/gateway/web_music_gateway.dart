@@ -13,7 +13,7 @@ extension type _BrowserGateway(JSObject _) implements JSObject {
   external void dispose();
 }
 
-/// Uses browser-owned file references. Audio bytes never enter Dart or storage.
+/// 使用浏览器管理的文件引用，音频字节不会进入 Dart 或存储。
 class WebMusicGateway implements MusicGateway {
   WebMusicGateway() {
     _browser = _createGateway(

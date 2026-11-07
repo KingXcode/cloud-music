@@ -8,7 +8,7 @@ import 'package:cloud_music/ui/lyrics_panel.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-// Original fictional test text, not excerpts from published lyrics.
+// 原创虚构测试文本，不摘录已发表的歌词。
 const _track = Track(
   id: 'fictional-1',
   title: 'Paper Observatory',
@@ -204,7 +204,7 @@ void main() {
         ]),
       );
       await _consentedSearch(tester);
-      // Existing imported lyrics survive searching until the user chooses.
+      // 搜索期间保留已有的导入歌词，直到用户选择新版本。
       expect(_key('lyrics-plain'), findsOneWidget);
       await _tap(tester, 'lyrics-candidate-702');
       expect(controller.document?.instrumental, isTrue);

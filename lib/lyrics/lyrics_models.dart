@@ -8,7 +8,7 @@ class LyricLine {
   final String text;
 }
 
-/// Lyrics remain plain text. No HTML, URLs or executable markup are interpreted.
+/// 歌词始终作为纯文本处理，不解析 HTML、URL 或可执行标记。
 class LyricsDocument {
   LyricsDocument._({
     required this.text,
@@ -32,10 +32,10 @@ class LyricsDocument {
       r'\[offset:([+-]?\d+)\]',
       caseSensitive: false,
     ).firstMatch(normalized);
-    // LRC positive offsets advance lyrics relative to the audio clock.
+    // LRC 正偏移量使歌词相对音频时钟提前显示。
     final offsetMs = int.tryParse(offset?.group(1) ?? '') ?? 0;
-    // A third colon component without a dot is LRC centiseconds, not hours.
-    // Hour-form timestamps require an explicit fractional dot: hh:mm:ss.xxx.
+    // 第三个冒号分段不含小数点时表示 LRC 百分之一秒，而非小时格式。
+    // 含小时的时间戳必须显式包含小数点：hh:mm:ss.xxx。
     final timestamps = RegExp(
       r'\[(?:(\d{1,3}):(\d{2}):(\d{2})\.(\d{1,3})|(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?)\]',
     );

@@ -131,7 +131,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('山间的风').last);
         await tester.pumpAndSettle();
-        // The mini-player opens a real route. Back restores the library.
+        // 迷你播放器打开真实路由，返回后恢复音乐库。
         expect(find.byTooltip('返回资料库'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('查看歌词'));

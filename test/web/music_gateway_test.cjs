@@ -1,4 +1,4 @@
-// Run: node --test test/web/music_gateway_test.cjs
+// 运行：node --test test/web/music_gateway_test.cjs
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
@@ -193,7 +193,7 @@ test('pickFolder invokes native picker synchronously before returning its promis
   const h = harness({picker:()=>new Promise(r=>resolve=r)});
   await h.gateway.initialize();
   const pending = h.gateway.command('pickFolder');
-  assert.equal(h.picked,1); // No timer/microtask/await occurs before picker invocation.
+  assert.equal(h.picked,1); // 调用选择器前不执行定时器、微任务或 await。
   resolve(directory({})); await pending; h.gateway.dispose();
 });
 test('picker security restriction is distinct from permission denial and does not silently fall back', async () => {
@@ -321,7 +321,7 @@ test('different same-named folders receive separate persistent source identities
   assert.notEqual(identity, 'original-root');
   assert.equal(h.cached.sourceIdentity, identity);
   await h.gateway.command('pickFolder');
-  assert.equal(h.events.at(-1).sourceIdentity, identity); // Same exact handle.
+  assert.equal(h.events.at(-1).sourceIdentity, identity); // 必须是同一个句柄。
   h.gateway.dispose();
 });
 test('saved handle identity wins over mismatched metadata cache', async () => {

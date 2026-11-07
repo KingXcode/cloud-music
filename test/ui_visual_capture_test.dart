@@ -1,4 +1,4 @@
-// Opt-in local visual QA. Fixture data is never included in the production app.
+// 按需执行的本地视觉检查，测试数据不会包含在正式应用中。
 // CLOUD_MUSIC_CAPTURE_DIR=/tmp/cloud-music-qa flutter test test/ui_visual_capture_test.dart
 import 'dart:io';
 import 'dart:ui' as ui;

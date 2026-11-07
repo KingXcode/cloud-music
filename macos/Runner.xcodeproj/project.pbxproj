@@ -9,7 +9,7 @@
 /* Begin PBXAggregateTarget section */
 		33CC111A2044C6BA0003C045 /* Flutter Assemble */ = {
 			isa = PBXAggregateTarget;
-			buildConfigurationList = 33CC111B2044C6BA0003C045 /* Build configuration list for PBXAggregateTarget "Flutter Assemble" */;
+			buildConfigurationList = 33CC111B2044C6BA0003C045 /* PBXAggregateTarget "Flutter Assemble" 的构建配置列表 */;
 			buildPhases = (
 				33CC111E2044C6BF0003C045 /* ShellScript */,
 			);
@@ -33,14 +33,14 @@
 /* Begin PBXContainerItemProxy section */
 		331C80D9294CF71000263BE5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 33CC10E52044A3C60003C045 /* Project object */;
+			containerPortal = 33CC10E52044A3C60003C045 /* 工程对象 */;
 			proxyType = 1;
 			remoteGlobalIDString = 33CC10EC2044A3C60003C045;
 			remoteInfo = Runner;
 		};
 		33CC111F2044C79F0003C045 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = 33CC10E52044A3C60003C045 /* Project object */;
+			containerPortal = 33CC10E52044A3C60003C045 /* 工程对象 */;
 			proxyType = 1;
 			remoteGlobalIDString = 33CC111A2044C6BA0003C045;
 			remoteInfo = FLX;
@@ -188,7 +188,7 @@
 /* Begin PBXNativeTarget section */
 		331C80D4294CF70F00263BE5 /* RunnerTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 331C80DE294CF71000263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */;
+			buildConfigurationList = 331C80DE294CF71000263BE5 /* PBXNativeTarget "RunnerTests" 的构建配置列表 */;
 			buildPhases = (
 				331C80D1294CF70F00263BE5 /* Sources */,
 				331C80D2294CF70F00263BE5 /* Frameworks */,
@@ -206,7 +206,7 @@
 		};
 		33CC10EC2044A3C60003C045 /* Runner */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 33CC10FB2044A3C60003C045 /* Build configuration list for PBXNativeTarget "Runner" */;
+			buildConfigurationList = 33CC10FB2044A3C60003C045 /* PBXNativeTarget "Runner" 的构建配置列表 */;
 			buildPhases = (
 				33CC10E92044A3C60003C045 /* Sources */,
 				33CC10EA2044A3C60003C045 /* Frameworks */,
@@ -230,7 +230,7 @@
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		33CC10E52044A3C60003C045 /* Project object */ = {
+		33CC10E52044A3C60003C045 /* 工程对象 */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
@@ -258,7 +258,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 33CC10E82044A3C60003C045 /* Build configuration list for PBXProject "Runner" */;
+			buildConfigurationList = 33CC10E82044A3C60003C045 /* PBXProject "Runner" 的构建配置列表 */;
 			compatibilityVersion = "Xcode 9.3";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -669,7 +669,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		331C80DE294CF71000263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */ = {
+		331C80DE294CF71000263BE5 /* PBXNativeTarget "RunnerTests" 的构建配置列表 */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				331C80DB294CF71000263BE5 /* Debug */,
@@ -679,7 +679,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		33CC10E82044A3C60003C045 /* Build configuration list for PBXProject "Runner" */ = {
+		33CC10E82044A3C60003C045 /* PBXProject "Runner" 的构建配置列表 */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				33CC10F92044A3C60003C045 /* Debug */,
@@ -689,7 +689,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		33CC10FB2044A3C60003C045 /* Build configuration list for PBXNativeTarget "Runner" */ = {
+		33CC10FB2044A3C60003C045 /* PBXNativeTarget "Runner" 的构建配置列表 */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				33CC10FC2044A3C60003C045 /* Debug */,
@@ -699,7 +699,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		33CC111B2044C6BA0003C045 /* Build configuration list for PBXAggregateTarget "Flutter Assemble" */ = {
+		33CC111B2044C6BA0003C045 /* PBXAggregateTarget "Flutter Assemble" 的构建配置列表 */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				33CC111C2044C6BA0003C045 /* Debug */,
@@ -725,5 +725,5 @@
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = 33CC10E52044A3C60003C045 /* Project object */;
+	rootObject = 33CC10E52044A3C60003C045 /* 工程对象 */;
 }

@@ -1,4 +1,4 @@
-/* Browser-only original-file playback. Never uploads or persists audio bytes. */
+/* 浏览器端直接播放原始文件，不上传或持久化音频字节。 */
 (() => {
   'use strict';
   const META = 'cloud-music-browser-v1';
@@ -40,8 +40,8 @@
   window.createCloudMusicGateway = listener => {
     const audio = new Audio();
     const browser = window.navigator || {};
-    // iPadOS may identify as macOS. Even where directory inputs are supported,
-    // individual files are the more reliable path through iOS file providers.
+    // iPadOS 可能将自己标识为 macOS。即使支持目录输入，
+    // 通过 iOS 文件提供器逐个选择文件仍是更可靠的方式。
     const appleMobile = /iPhone|iPad|iPod/.test(browser.userAgent || '') ||
       (browser.platform === 'MacIntel' && browser.maxTouchPoints > 1);
     const filesOnly = appleMobile || (typeof window.showDirectoryPicker !== 'function' &&
@@ -59,7 +59,7 @@
       try {
         localStorage.setItem(META, JSON.stringify({folderName: state.folderName, sourceIdentity: state.sourceIdentity,
           tracks: state.tracks, shuffle: state.shuffle, repeatMode: state.repeatMode, volume: state.volume}));
-      } catch (_) { /* Private mode/quota: current-session playback still works. */ }
+      } catch (_) { /* 隐私模式或配额限制不影响当前会话中的播放。 */ }
     }
     function emit(persist = false) {
       if (disposed) return;
@@ -111,7 +111,7 @@
 
     async function scan(handle, explicit, replacing = false) {
       const generation = ++scanGeneration;
-      // A confirmed new selection invalidates any pending old-file read now.
+      // 确认新选择后，立即使尚未完成的旧文件读取失效。
       if (replacing) clearAudio();
       state.isScanning = true; state.message = null; emit();
       const found = new Map(), failed = [], directoryChildren = new Map();
@@ -131,21 +131,21 @@
       await walk(handle, '');
       if (disposed || generation !== scanGeneration) return;
       if (rootError) { state.isScanning = false; state.message = messageFor(rootError); emit(); return; }
-      // Absence from a listing is not proof: cloud/removable providers may
-      // temporarily return empty or incomplete listings without throwing.
+      // 目录列表中未出现文件不能作为缺失证明：云端或可移动存储提供器
+      // 可能暂时返回空或不完整的列表，却不抛出异常。
       async function confirmedMissing(path) {
         if (failed.length) return false;
         const parts = path.split('/');
         const name = parts.pop();
         const prefix = parts.length ? parts.join('/') + '/' : '';
         const siblings = (directoryChildren.get(prefix) || []).filter(child => child.name !== name);
-        if (!siblings.length) return false; // No positive evidence the parent is mounted.
+        if (!siblings.length) return false; // 没有确切证据表明父目录已挂载。
         try {
           let parent = handle;
           for (const part of parts) parent = await parent.getDirectoryHandle(part);
           try { await parent.getFileHandle(name); return false; }
           catch (e) { if (!missing(e)) return false; }
-          // Re-open a listed sibling, without opening its audio bytes.
+          // 重新打开已列出的同级文件，但不读取其音频字节。
           let healthy = false;
           for (const sibling of siblings) {
             try {
@@ -155,7 +155,7 @@
             } catch (_) {}
           }
           if (!healthy || await handle.queryPermission({mode: 'read'}) !== 'granted') return false;
-          // Check absence again after the positive health/permission checks.
+          // 健康状态和权限检查通过后，再次确认文件是否缺失。
           try { await parent.getFileHandle(name); return false; }
           catch (e) { return missing(e); }
         } catch (_) { return false; }
@@ -167,7 +167,7 @@
         const prior = old.get(path);
         tracks.push({...prior, id: path, title: prior?.title || path.split('/').pop().replace(/\.[^.]+$/, ''),
           artist: prior?.artist || '', album: prior?.album || '', relativePath: path,
-          // A directory listing cannot prove cloud bytes are available offline.
+          // 目录列表不能证明云端文件内容已可离线读取。
           status: prior?.status === 'unsupported' ? 'unsupported' : 'unknown', durationMs: prior?.durationMs || 0});
       }
       for (const [id, track] of old) {
@@ -210,7 +210,7 @@
       for (const file of files) {
         if (!extensions.test(file.name) && !file.type?.startsWith('audio/')) continue;
         const path = file.webkitRelativePath?.split('/').slice(1).join('/') || file.name;
-        // A multi-file selection can contain equal names from different sources.
+        // 文件多选结果可能包含来自不同来源的同名文件。
         let id = path, duplicate = 1;
         while (next.has(id)) id = `${path} [${++duplicate}]`;
         next.set(id, {file});
@@ -223,7 +223,7 @@
       }
       ++scanGeneration; clearAudio(); root = null; history.length = 0; shuffleVisited.clear();
       entries = next;
-      // File inputs cannot verify that two selections refer to the same root.
+      // 文件输入无法确认两次选择是否指向同一根目录。
       state.sourceIdentity = newSourceIdentity();
       state.folderName = filesOnly ? '已选音乐文件' :
         (files[0].webkitRelativePath?.split('/')[0] || '已选音乐文件');
@@ -232,14 +232,14 @@
       state.message = filesOnly
         ? '已选择音乐文件。重新打开网页后需再次选择，音频不会上传。iCloud 文件可能先由系统下载。'
         : '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。音频不会上传。';
-      // Persisting a cleared handle must not hold the UI hostage to IndexedDB.
+      // 持久化已清空的句柄时，不得因等待 IndexedDB 而卡住界面。
       void savedHandle(null, true).catch(() => {});
       emit(true);
     }
     function fallbackPick() {
-      // Some iOS/provider combinations send neither change nor cancel. Do not
-      // await these events: the command ends after opening the native sheet.
-      // A later user gesture can always discard an abandoned input and retry.
+      // 某些 iOS 与文件提供器组合既不发送 change，也不发送 cancel 事件。
+      // 不等待这些事件，命令在打开原生面板后即结束。
+      // 后续用户手势始终可以丢弃已放弃的输入并重试。
       pickerCleanup?.();
       ++scanGeneration;
       const input = document.createElement('input');
@@ -284,8 +284,8 @@
       if (!root) return pick();
       permissionBusy = true;
       try {
-        // Invoked directly from the click handler, before any async boundary.
-        // requestPermission is never called during initialize or background scan.
+        // 在任何异步边界之前，直接从点击处理函数中调用。
+        // initialize 或后台扫描期间绝不调用 requestPermission。
         const permission = await root.requestPermission({mode: 'read'});
         if (permission !== 'granted') {
           state.message = '未获得文件夹读取权限。请点击刷新再次授权，或重新选择文件夹。'; emit(); return;
@@ -370,10 +370,10 @@
           if (state.folderName) state.message = '请重新选择音乐文件以恢复播放；网页不会保存音频或持续读取 iCloud 文件夹。';
           return snapshot();
         }
-        // Capture the revision before scheduling: a fresh file selection must win
-        // even when it happens before this startup task gets its first turn.
+        // 调度前记录修订号：即使新文件选择发生在启动任务首次执行前，
+        // 也必须优先采用该选择。
         const generation = scanGeneration;
-        // Return cached metadata immediately. Restore/validate handles in background.
+        // 立即返回缓存元数据，在后台恢复并校验句柄。
         setTimeout(async () => {
           try {
             const saved = await savedHandle();

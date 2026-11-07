@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../lyrics/lyrics_controller.dart';
 import '../lyrics/lyrics_models.dart';
 
-/// A locally rebuilding lyrics view. Opening this panel never contacts a server.
+/// 仅在局部重建的歌词视图，打开此面板不会连接服务器。
 class LyricsPanel extends StatefulWidget {
   const LyricsPanel({
     super.key,
@@ -62,7 +62,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
       if (active >= _lineKeys.length) return;
       final target = _lineKeys[active].currentContext?.findRenderObject();
       if (target != null) {
-        // Only move our own viewport, never the surrounding player route.
+        // 只滚动本组件的视口，不影响外层播放器路由。
         _scroll.position.ensureVisible(
           target,
           alignment: 0.4,

@@ -80,8 +80,8 @@ class WebLyricsPlatform implements LyricsPlatform {
 
   @override
   Future<String?> importFile() async {
-    // Some mobile providers never fire change/cancel/focus. A fresh user
-    // gesture can discard an abandoned input without losing activation.
+    // 部分移动端文件提供器不会触发 change/cancel/focus 事件。
+    // 新的用户手势可丢弃已放弃的输入，同时保留用户激活状态。
     _cancelPicker?.call();
     final result = Completer<String?>();
     final input = web.HTMLInputElement()

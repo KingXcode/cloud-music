@@ -8,7 +8,7 @@ import 'models.dart';
 import 'lyrics/lyrics_controller.dart';
 
 class MusicController extends ChangeNotifier {
-  // Public injection name intentionally differs from the private field.
+  // 公开的注入参数名有意与私有字段名区分。
   MusicController({required MusicGateway gateway, LyricsController? lyrics})
     // ignore: prefer_initializing_formals
     : _gateway = gateway,

@@ -6,7 +6,7 @@ EXE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Contents/Info
 test -x "$APP/Contents/MacOS/$EXE"
 file "$APP/Contents/MacOS/$EXE"
 lipo -archs "$APP/Contents/MacOS/$EXE" | tee macos-architectures.txt
-# Keep the build's local/ad-hoc signature and sandbox entitlements. This is not a Developer ID/notarized release.
+# 保留构建产物的本地临时签名和沙盒授权，此版本未使用 Developer ID 签名，也未经过公证。
 codesign --verify --deep --strict "$APP"
 mkdir -p dist build/dmg-staging
 cp -R "$APP" build/dmg-staging/

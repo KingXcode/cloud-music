@@ -1,4 +1,4 @@
-# Miscellaneous
+# 杂项
 *.class
 *.log
 *.pyc
@@ -12,19 +12,19 @@
 .swiftpm/
 migrate_working_dir/
 
-# IntelliJ related
+# IntelliJ 相关文件
 *.iml
 *.ipr
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
+# .vscode 文件夹包含在 VS Code 中配置的启动项和任务，
+# 这些内容可能需要纳入版本控制，
+# 因此默认将下方忽略规则注释掉。
 #.vscode/
 
-# Flutter/Dart/Pub related
-# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
+# Flutter/Dart/Pub 相关文件
+# 库项目不应包含 pubspec.lock，详见 https://dart.dev/guides/libraries/private-files#pubspeclock。
 /pubspec.lock
 **/doc/api/
 .dart_tool/

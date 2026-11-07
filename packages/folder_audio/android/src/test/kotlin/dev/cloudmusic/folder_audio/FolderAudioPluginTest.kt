@@ -5,7 +5,7 @@ import io.flutter.plugin.common.MethodChannel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** JVM checks for the bridge schema; SAF and playback require the documented device matrix. */
+/** 桥接数据结构的 JVM 检查；SAF 和播放需按文档中的设备矩阵验证。 */
 internal class FolderAudioPluginTest {
     private class RecordingResult : MethodChannel.Result {
         var successCount = 0

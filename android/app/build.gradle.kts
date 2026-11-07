@@ -1,6 +1,6 @@
 plugins {
     id("com.android.application")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    // Flutter Gradle 插件必须在 Android 和 Kotlin Gradle 插件之后应用。
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -15,24 +15,24 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // TODO: 指定自己的唯一应用 ID（https://developer.android.com/studio/build/application-id.html）。
         applicationId = "dev.cloudmusic.cloud_music"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // 可根据应用需求调整以下值。
+        // 更多说明见 https://flutter.dev/to/review-gradle-config。
         minSdk = maxOf(24, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+        // 使用 pubspec.yaml 中的版本代码。按架构拆分 APK 时，Flutter 会自动加上
+        // 1000 * ABI_VERSION（https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions）。
+        // 构建时可指定 `-P force-version-code-ignoring-abi=true`，
+        // 强制使用 versionCode 的值。
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // TODO: 为发布构建添加自己的签名配置。
+            // 暂时使用调试密钥签名，以便运行 `flutter run --release`。
             signingConfig = signingConfigs.getByName("debug")
         }
     }

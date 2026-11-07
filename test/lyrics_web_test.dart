@@ -9,7 +9,7 @@ import 'package:cloud_music/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web/web.dart' as web;
 
-// Suppress the real OS dialog while testing the actual browser input lifecycle.
+// 测试真实浏览器输入生命周期时，阻止弹出实际系统对话框。
 @JS('HTMLInputElement.prototype')
 external _InputPrototype get _prototype;
 
@@ -30,7 +30,7 @@ void main() {
       final first = c.importFile();
       expect(c.busy, isTrue);
       expect(web.document.querySelectorAll('input[type=file]').length, 1);
-      // Simulate the mobile provider returning without change, cancel or focus.
+      // 模拟移动端文件提供器返回时未触发 change、cancel 或 focus 事件。
       c.cancelSearch();
       final second = c.importFile();
       await first;
