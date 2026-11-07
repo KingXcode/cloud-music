@@ -2,6 +2,8 @@
 
 A Flutter original-file music player for iPhone, iPad, macOS, Android (including ordinary APK-based head units), and the browser.
 
+[Open the Web app](https://kingxcode.github.io/cloud-music/) · [Source repository](https://github.com/KingXcode/cloud-music) · [Build status](https://github.com/KingXcode/cloud-music/actions)
+
 ## What it does
 
 - Choose an iCloud Drive folder on Apple devices, or a local/USB directory through Android's system picker.
@@ -49,7 +51,7 @@ The release Android configuration currently uses the standard debug/test signing
 ## GitHub delivery
 
 - `Deploy Web to GitHub Pages`: validates, builds and deploys the browser app when main is pushed or manually dispatched. The Pages base path follows the repository name. The repository must support Pages and allow the workflow permissions.
-- `Build APK and macOS DMG`: manually dispatch with a new preview tag. Linux builds the universal APK; hosted macOS compiles the app and creates the DMG. It verifies APK signatures/package contents, checks the app executable/signature, verifies the DMG, writes SHA-256 checksums and publishes a prerelease only after both native jobs succeed.
+- `Build APK and macOS DMG`: manually dispatch with a new preview tag and `all` platforms. The `android` option builds/verifies only an APK artifact without publishing a release. Linux builds the universal APK; hosted macOS compiles the app and creates the DMG. It verifies APK signatures/package contents, checks the app executable/signature, verifies the DMG, writes SHA-256 checksums and publishes a prerelease only after both native jobs succeed.
 - The macOS DMG is unsigned and the app is not Developer ID signed/notarized. A local ad-hoc signature may be present. The release reports actual CPU architectures.
 
 No certificates, production signing keys or user music are stored in this repository.
@@ -66,4 +68,6 @@ No certificates, production signing keys or user music are stored in this reposi
 
 ## Validation status at source delivery
 
-Passed in the cloud workspace: Flutter analyzer, 16 unit/widget tests (including compact/landscape/wide and large-text layouts), 16 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
+Passed in the cloud workspace: Flutter analyzer, 16 unit/widget tests (including compact/landscape/wide and large-text layouts), 18 browser logic tests, JavaScript syntax check and Web release build. Native Android/macOS builds and package checks are performed by the GitHub release workflow; inspect its actual result rather than assuming a source-only pass proves compilation. Real-device access/playback tests remain separate.
+
+Live Web smoke tests verified the published layout, full-player navigation, visible provider errors, and repeat/shuffle preference restoration. The automated browser could not open the system folder picker; real directory selection, audio playback and handle restoration remain unverified there.
