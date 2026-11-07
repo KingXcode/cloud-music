@@ -1,0 +1,19 @@
+name: cloud_music
+description: Private original-file music player for Apple devices, Android folders and the web.
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  folder_audio:
+    path: packages/folder_audio
+  web: ^1.1.1
+  cupertino_icons: ^1.0.9
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true

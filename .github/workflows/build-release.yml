@@ -1,0 +1,94 @@
+name: Build APK and macOS DMG
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Preview release tag
+        required: true
+        default: v0.1.0-preview.1
+        type: string
+permissions:
+  contents: read
+env:
+  BOT: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  DART_SUPPRESS_ANALYTICS: 'true'
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/ci_flutter.sh
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Browser gateway tests
+        run: node --test test/web/music_gateway_test.cjs
+  android:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: bash scripts/ci_flutter.sh
+      - run: flutter pub get
+      - name: Build universal preview APK with standard debug/test signing
+        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+      - name: Run Android bridge JVM tests
+        run: cd android && ./gradlew :folder_audio:testDebugUnitTest
+      - name: Verify APK signature, package and native code
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee dist/android-signature.txt
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | tee dist/android-package.txt
+          unzip -l "$APK" | grep 'lib/arm64-v8a/libapp.so'
+          cp "$APK" dist/cloud-music-android-test-signed.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-package
+          path: dist/*
+  macos:
+    needs: checks
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/ci_flutter.sh
+      - run: flutter pub get
+      - name: Compile iPhone and iPad target without signing
+        run: flutter build ios --release --no-codesign
+      - name: Build macOS release without Developer ID or notarization
+        run: flutter build macos --release
+      - run: bash scripts/package_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-package
+          path: dist/*
+  release:
+    needs: [android, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-package'
+          path: dist
+          merge-multiple: true
+      - name: Create checksums and publish a clearly labeled preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release tag'; exit 1; }
+          (cd dist && sha256sum *.apk *.dmg > SHA256SUMS.txt)
+          gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "Cloud Music $RELEASE_TAG (preview)" --notes-file docs/RELEASE_NOTES.md --prerelease
