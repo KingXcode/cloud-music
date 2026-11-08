@@ -38,7 +38,7 @@ flutter build web --release --base-href /cloud-music/ \
 
 CI 可读取 GitHub repository variable `GOOGLE_DRIVE_WEB_CLIENT_ID`。值为空时发布的网页保留系统音乐和未配置提示，不会借用其他应用的客户端标识。
 
-Google Identity Services 脚本只在用户点连接后加载。第一次加载完成后提示再次点击连接；第二次点击同步打开 Google 授权弹窗，避免浏览器阻止异步弹窗。取消或关闭面板不会接纳迟到授权。页面不自动请求持续访问，也不保存刷新令牌。
+原生 `google_sign_in` 依赖的网页自动注册已通过应用专用空注册器禁用（`packages/google_sign_in_web_no_autoload`）；Android/iOS/macOS 官方 SDK 不受影响。网页仅采用独立 GIS 桥接，Google Identity Services 脚本只在用户点连接后加载。第一次加载完成后提示再次点击连接；第二次点击同步打开 Google 授权弹窗，避免浏览器阻止异步弹窗。取消或关闭面板不会接纳迟到授权。页面不自动请求持续访问，也不保存刷新令牌。
 
 **网页不是远程分段串流：** HTML Audio 不能直接附加 Authorization，因此先通过有界 fetch 把当前整首歌曲读取到内存，再用临时 Blob URL 播放。单曲上限 **100 MiB**，即使服务端未提供 Content-Length 也累计检查字节数。会产生完整下载流量；低内存设备建议较小文件。换歌、取消、错误和断开时释放对象 URL/缓冲，不保存到 IndexedDB 或应用下载缓存。浏览器可能要求再次点播放以允许声音；已缓冲音频可以恢复播放而不重新下载。
 

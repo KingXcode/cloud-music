@@ -1,0 +1,18 @@
+name: google_sign_in_web
+version: 1.1.0
+publish_to: none
+description: 云听原生登录依赖的网页空注册器；网页授权由应用自己的 GIS 桥接负责。
+environment:
+  sdk: '>=3.13.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+flutter:
+  plugin:
+    implements: google_sign_in
+    platforms:
+      web:
+        pluginClass: GoogleSignInWebDisabled
+        fileName: google_sign_in_web.dart

@@ -14,6 +14,10 @@ dependencies:
   google_sign_in: ^7.2.0
   just_audio: ^0.10.6
   cupertino_icons: ^1.0.9
+dependency_overrides:
+  # 网页采用独立 GIS 桥接，避免原生依赖自动预加载第二套网页授权 SDK。
+  google_sign_in_web:
+    path: packages/google_sign_in_web_no_autoload
 dev_dependencies:
   flutter_test:
     sdk: flutter

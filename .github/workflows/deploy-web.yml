@@ -30,6 +30,8 @@ jobs:
           REPOSITORY_NAME: ${{ github.event.repository.name }}
           GOOGLE_DRIVE_WEB_CLIENT_ID: ${{ vars.GOOGLE_DRIVE_WEB_CLIENT_ID }}
         run: flutter build web --release --base-href "/$REPOSITORY_NAME/" --dart-define="GOOGLE_DRIVE_WEB_CLIENT_ID=$GOOGLE_DRIVE_WEB_CLIENT_ID"
+      - name: Verify Google Drive loads GIS only after user action
+        run: node scripts/verify_drive_web_build.cjs build/web
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
