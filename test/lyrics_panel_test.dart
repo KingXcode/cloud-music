@@ -68,6 +68,7 @@ Future<LyricsController> _mount(
   Duration position = Duration.zero,
   ValueChanged<Duration>? onSeek,
   double textScale = 1,
+  bool immersive = false,
 }) async {
   final controller = LyricsController(platform: platform);
   await controller.initialize();
@@ -82,13 +83,23 @@ Future<LyricsController> _mount(
         child: child!,
       ),
       home: Scaffold(
-        body: SingleChildScrollView(
-          child: LyricsPanel(
-            controller: controller,
-            position: position,
-            onSeek: onSeek ?? (_) {},
-          ),
-        ),
+        body: immersive
+            ? SizedBox(
+                height: 240,
+                child: LyricsPanel(
+                  immersive: true,
+                  controller: controller,
+                  position: position,
+                  onSeek: onSeek ?? (_) {},
+                ),
+              )
+            : SingleChildScrollView(
+                child: LyricsPanel(
+                  controller: controller,
+                  position: position,
+                  onSeek: onSeek ?? (_) {},
+                ),
+              ),
       ),
     ),
   );
@@ -102,6 +113,71 @@ Future<void> _consentedSearch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('immersive options preserve consent and stale-selection guards', (
+    tester,
+  ) async {
+    final platform = _Platform();
+    final controller = await _mount(
+      tester,
+      platform,
+      immersive: true,
+      textScale: 1.8,
+    );
+    expect(_key('lyrics-search'), findsNothing);
+    expect(_key('lyrics-add'), findsOneWidget);
+    expect(platform.requests, isEmpty);
+    await _tap(tester, 'lyrics-options');
+    await _tap(tester, 'lyrics-search');
+    await _tap(tester, 'lyrics-consent-cancel');
+    expect(platform.requests, isEmpty);
+    await _tap(tester, 'lyrics-search');
+    controller.selectTrack(_track.copyWith(title: 'A newer selection'));
+    await tester.pump();
+    await _tap(tester, 'lyrics-consent-confirm');
+    expect(platform.requests, isEmpty);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_key('lyrics-options-sheet'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('immersive drag pauses follow and line tap resumes and seeks', (
+    tester,
+  ) async {
+    final platform = _Platform();
+    Duration? sought;
+    final controller = await _mount(
+      tester,
+      platform,
+      immersive: true,
+      position: const Duration(seconds: 2),
+      onSeek: (value) => sought = value,
+    );
+    await controller.importText(
+      List.generate(
+        20,
+        (i) => '[00:${i.toString().padLeft(2, '0')}.00]Fictional line $i',
+      ).join('\n'),
+    );
+    await tester.pumpAndSettle();
+    final active = tester.widget<TextButton>(_key('lyrics-line-2'));
+    expect((active.child! as Text).style!.fontSize, 32);
+    expect(active.style!.foregroundColor!.resolve({}), Colors.white);
+    expect(active.style!.backgroundColor!.resolve({}), Colors.transparent);
+    await tester.drag(_key('lyrics-synced-scroll'), const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(_key('lyrics-follow'), findsOneWidget);
+    await _tap(tester, 'lyrics-follow');
+    expect(_key('lyrics-follow'), findsNothing);
+    await tester.drag(_key('lyrics-synced-scroll'), const Offset(0, -70));
+    await tester.pumpAndSettle();
+    await _tap(tester, 'lyrics-line-3');
+    expect(sought, const Duration(seconds: 3));
+    expect(_key('lyrics-follow'), findsNothing);
+    expect(platform.requests, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('opening, editing, cancelling and Back never send a request', (
     tester,
   ) async {

@@ -30,6 +30,12 @@ void main() {
             ))
             .load();
       }
+      await (FontLoader('packages/cupertino_icons/CupertinoIcons')..addFont(
+            File(
+              '${Platform.environment['PUB_CACHE']}/hosted/pub.dev/cupertino_icons-1.0.9/assets/CupertinoIcons.ttf',
+            ).readAsBytes().then((b) => ByteData.sublistView(b)),
+          ))
+          .load();
       await (FontLoader('MaterialIcons')..addFont(
             File(
               '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
@@ -152,12 +158,19 @@ void main() {
     await capture('phone-library');
     await tester.tap(find.text('山间的风').last);
     await capture('phone-player');
-    await tester.ensureVisible(find.byKey(const Key('lyrics-panel')));
+    await tester.tap(find.byTooltip('查看歌词'));
+    await tester.pumpAndSettle();
     await capture('phone-lyrics');
+    await tester.tap(find.byTooltip('待播清单'));
+    await capture('phone-queue');
     await tester.tap(find.byTooltip('返回资料库'));
     await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(1440, 900);
     await capture('desktop-library');
+    await tester.tap(find.byKey(const Key('open-player')));
+    await capture('desktop-player');
+    await tester.tap(find.byTooltip('返回资料库'));
+    await tester.pumpAndSettle();
     tester.view.physicalSize = const Size(844, 390);
     await capture('head-unit-library');
     await tester.tap(find.text('山间的风').last);
