@@ -28,7 +28,8 @@ jobs:
       - name: Build for the repository Pages path
         env:
           REPOSITORY_NAME: ${{ github.event.repository.name }}
-        run: flutter build web --release --base-href "/$REPOSITORY_NAME/"
+          GOOGLE_DRIVE_WEB_CLIENT_ID: ${{ vars.GOOGLE_DRIVE_WEB_CLIENT_ID }}
+        run: flutter build web --release --base-href "/$REPOSITORY_NAME/" --dart-define="GOOGLE_DRIVE_WEB_CLIENT_ID=$GOOGLE_DRIVE_WEB_CLIENT_ID"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web

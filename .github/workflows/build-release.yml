@@ -46,7 +46,9 @@ jobs:
       - run: bash scripts/ci_flutter.sh
       - run: flutter pub get
       - name: Build universal preview APK with standard debug/test signing
-        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+        env:
+          GOOGLE_DRIVE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_DRIVE_SERVER_CLIENT_ID }}
+        run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define="GOOGLE_DRIVE_SERVER_CLIENT_ID=$GOOGLE_DRIVE_SERVER_CLIENT_ID"
       - name: Run Android bridge JVM tests
         run: cd android && ./gradlew :folder_audio:testDebugUnitTest
       - name: Verify APK signature, package and native code

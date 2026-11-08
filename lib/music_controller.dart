@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'gateway/music_gateway.dart';
+import 'gateway/source_music_gateway.dart';
+import 'drive/drive_gateway.dart';
 import 'models.dart';
 import 'lyrics/lyrics_controller.dart';
 
@@ -15,6 +17,12 @@ class MusicController extends ChangeNotifier {
       lyrics = lyrics ?? LyricsController();
   final LyricsController lyrics;
   final MusicGateway _gateway;
+  DriveGateway? get drive =>
+      _gateway is SourceMusicGateway ? _gateway.drive : null;
+  bool get usingDrive => _gateway is SourceMusicGateway && _gateway.usingDrive;
+  Future<void> useDriveFolder() => _command('driveUseFolder');
+  Future<void> disconnectDrive() => _command('driveDisconnect');
+  Future<void> useLocalSource() => _command('useLocal');
   LibrarySnapshot _snapshot = const LibrarySnapshot();
   LibrarySnapshot get snapshot => _snapshot;
   String? _error;

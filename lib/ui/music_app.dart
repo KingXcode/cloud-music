@@ -8,6 +8,7 @@ import 'package:flutter/material.dart' hide RepeatMode;
 import '../models.dart';
 import '../music_controller.dart';
 import 'lyrics_panel.dart';
+import 'music_sources_sheet.dart';
 
 const _accent = Color(0xFFE83E59);
 const _ink = Color(0xFF202024);
@@ -268,6 +269,25 @@ class _LibraryPageState extends State<_LibraryPage> {
                                             ),
                                           ),
                                         ),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: TextButton.icon(
+                                          key: const Key('music-sources'),
+                                          onPressed: () =>
+                                              showMusicSources(context, c),
+                                          icon: Icon(
+                                            s.sourceKind == 'googleDrive'
+                                                ? Icons.cloud_outlined
+                                                : Icons.folder_outlined,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            s.sourceKind == 'googleDrive'
+                                                ? 'Google Drive · 管理音乐来源'
+                                                : '系统文件 · 添加网盘来源',
+                                          ),
+                                        ),
+                                      ),
                                       TextField(
                                         key: const Key('library-search'),
                                         controller: _search,
