@@ -113,6 +113,58 @@ Future<void> _consentedSearch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('automatic consent can be cancelled, enabled once and disabled', (
+    tester,
+  ) async {
+    final platform = _Platform();
+    final controller = await _mount(
+      tester,
+      platform,
+      immersive: true,
+      textScale: 1.8,
+    );
+    await _tap(tester, 'lyrics-add');
+    expect(_key('lyrics-auto-consent'), findsOneWidget);
+    expect(platform.requests, isEmpty);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(controller.automaticEnabled, false);
+    expect(platform.requests, isEmpty);
+    await _tap(tester, 'lyrics-add');
+    await _tap(tester, 'lyrics-auto-confirm');
+    await tester.pump(const Duration(milliseconds: 750));
+    await tester.pumpAndSettle();
+    expect(controller.automaticEnabled, true);
+    expect(platform.requests, hasLength(1));
+    expect(controller.candidates, hasLength(1));
+    expect(find.textContaining('找到 1 个歌词版本'), findsOneWidget);
+    await _tap(tester, 'lyrics-options');
+    await _tap(tester, 'lyrics-auto-switch');
+    expect(controller.automaticEnabled, false);
+    expect(_key('lyrics-auto-consent'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'automatic match shows lyrics without opening search or choosing version',
+    (tester) async {
+      final platform = _Platform();
+      final controller = await _mount(tester, platform, immersive: true);
+      controller.selectTrack(
+        _track.copyWith(duration: const Duration(seconds: 95)),
+      );
+      await _tap(tester, 'lyrics-add');
+      await _tap(tester, 'lyrics-auto-confirm');
+      await tester.pump(const Duration(milliseconds: 750));
+      await tester.pumpAndSettle();
+      expect(controller.document?.isSynced, true);
+      expect(_key('lyrics-line-0'), findsOneWidget);
+      expect(_key('lyrics-consent-dialog'), findsNothing);
+      expect(_key('lyrics-candidates'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('immersive options preserve consent and stale-selection guards', (
     tester,
   ) async {

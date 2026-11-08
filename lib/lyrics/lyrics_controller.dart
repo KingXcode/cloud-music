@@ -7,10 +7,10 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import 'lyrics_factory.dart';
 import 'lyrics_models.dart';
+import 'lyrics_matching.dart';
 import 'lyrics_platform.dart';
 
-/// 选择或播放歌曲不会发起网络请求。只有用户在知情后主动搜索，
-/// 才会发送其填写的字段。
+/// 自动搜索须先由用户开启；仅发送歌名、歌手与可选专辑，不发送音频或路径。
 class LyricsController extends ChangeNotifier {
   LyricsController({LyricsPlatform? platform, DateTime Function()? now})
     : _platform = platform ?? createLyricsPlatform(),
@@ -19,9 +19,16 @@ class LyricsController extends ChangeNotifier {
   final LyricsPlatform _platform;
   final DateTime Function() _now;
   final _cache = <String, LyricsDocument>{};
+  final _automaticMatches = <String, LyricsCandidate>{};
   Track? _track;
   Track? get track => _track;
-  String? _key;
+  String? _key, _cacheKey;
+  bool _automaticEnabled = false;
+  bool get automaticEnabled => _automaticEnabled;
+  bool _automaticSearch = false;
+  Timer? _autoTimer;
+  final _attempted = <String, DateTime>{};
+  bool get searchingAutomatically => _busy && _automaticSearch;
   Object? get selectionIdentity => _key;
   LyricsDocument? _document;
   LyricsDocument? get document => _document;
@@ -51,23 +58,160 @@ class LyricsController extends ChangeNotifier {
       }
       final value = jsonDecode(raw) as Map<String, dynamic>;
       if (value['version'] != 1) throw const FormatException('未知缓存版本');
+      _automaticEnabled = value['automaticSearch'] == true;
       final entries = value['entries'] as Map<String, dynamic>;
       for (final entry in entries.entries.take(100)) {
         try {
           final doc = LyricsDocument.fromJson(
             entry.value as Map<String, dynamic>,
           );
-          if (!doc.isEmpty) _cache.putIfAbsent(entry.key, () => doc);
+          if (!doc.isEmpty) {
+            _cache.putIfAbsent(_stableCacheKey(entry.key), () => doc);
+          }
         } catch (_) {
           // 无效条目不得阻止其他已下载歌词的加载。
         }
       }
-      _document = _cache[_key];
+      final automaticMatches = value['automaticMatches'];
+      if (automaticMatches is Map) {
+        for (final entry in automaticMatches.entries.take(100)) {
+          try {
+            final key = entry.key as String;
+            final metadata = Map<String, dynamic>.from(entry.value as Map);
+            final doc = _cache[key];
+            if (doc == null) continue;
+            _automaticMatches[key] = LyricsCandidate(
+              id: metadata['id'] as int,
+              title: metadata['title'] as String,
+              artist: metadata['artist'] as String,
+              album: metadata['album'] as String,
+              duration: Duration(milliseconds: metadata['durationMs'] as int),
+              document: doc,
+            );
+          } catch (_) {
+            // 损坏的自动匹配来源不可当作手动确认结果复用。
+            _cache.remove(entry.key);
+          }
+        }
+      }
+      _document = _cachedForTrack();
     } catch (_) {
       if (!_disposed) _notice = '无法读取本地歌词缓存。仍可导入或手动下载歌词。';
     } finally {
-      if (!_disposed) notifyListeners();
+      if (!_disposed) {
+        notifyListeners();
+        _scheduleAutomatic();
+      }
     }
+  }
+
+  // 旧缓存包含元数据，迁移后按同一来源的原文件定位，标签补全不丢失已选歌词。
+  String _stableCacheKey(String key) {
+    try {
+      final parts = jsonDecode(key);
+      if (parts is List && parts.length >= 4) {
+        return jsonEncode(parts.take(4).toList());
+      }
+    } catch (_) {
+      /* 无效条目留给原缓存格式校验处理。 */
+    }
+    return key;
+  }
+
+  LyricsDocument? _cachedForTrack() {
+    final match = _automaticMatches[_cacheKey];
+    if (match != null && _track != null) {
+      // 手动确认的歌词始终保留；自动结果必须通过后来补全的标签再次核验。
+      final track = _track!;
+      final checked = track.duration > Duration.zero
+          ? track
+          : track.copyWith(duration: match.duration);
+      if (confidentLyricsMatch(checked, [match]) == null) return null;
+    }
+    return _cache[_cacheKey];
+  }
+
+  Future<void> setAutomaticSearch(bool enabled) async {
+    await initialize();
+    if (_disposed) return;
+    _automaticEnabled = enabled;
+    if (!enabled) {
+      _autoTimer?.cancel();
+      if (_automaticSearch) cancelSearch();
+    } else {
+      _attempted.remove(_key);
+    }
+    notifyListeners();
+    final write = _pendingWrite.then(
+      (_) => _platform.writeCache(_serializeCache()),
+    );
+    _pendingWrite = write.catchError((Object _) {});
+    try {
+      await write;
+    } catch (_) {
+      if (!_disposed) {
+        _notice = '自动歌词设置仅在本次使用中有效，无法保存到本机。';
+        notifyListeners();
+      }
+    }
+    _scheduleAutomatic();
+  }
+
+  void _scheduleAutomatic() {
+    if (_disposed ||
+        !_automaticEnabled ||
+        _track == null ||
+        _document != null ||
+        _busy) {
+      return;
+    }
+    _autoTimer?.cancel();
+    // 等待播放网关补全标签和时长，快速切歌时只搜索最后一首。
+    _autoTimer = Timer(
+      const Duration(milliseconds: 700),
+      () => unawaited(_autoSearch()),
+    );
+  }
+
+  Future<void> _autoSearch() async {
+    await initialize();
+    if (_disposed ||
+        !_automaticEnabled ||
+        _key == null ||
+        _track == null ||
+        _document != null ||
+        _busy ||
+        _searchInFlight) {
+      return;
+    }
+    final track = _track!;
+    if (track.title.trim().isEmpty) return;
+    if (_candidates.isNotEmpty) {
+      if (!_automaticSearch) return;
+      final match = confidentLyricsMatch(track, _candidates);
+      if (match != null) await _save(match.document, automaticMatch: match);
+      return;
+    }
+    if (retryAfter != null) {
+      _notice = '歌词服务繁忙，稍后可在歌词选项中重试。';
+      notifyListeners();
+      return;
+    }
+    final attempted = _attempted[_key];
+    if (attempted != null &&
+        _now().difference(attempted) < const Duration(minutes: 10)) {
+      return;
+    }
+    _attempted[_key!] = _now();
+    while (_attempted.length > 100) {
+      _attempted.remove(_attempted.keys.first);
+    }
+    await _search(
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      automatic: true,
+    );
   }
 
   void selectTrack(
@@ -88,22 +232,46 @@ class LyricsController extends ChangeNotifier {
             track.artist,
             track.album,
           ]);
+    final oldDuration = _track?.duration;
     _track = track;
-    if (_key == key) return;
+    if (_key == key) {
+      if (oldDuration != track?.duration) {
+        final previous = _document;
+        _document = _cachedForTrack();
+        if (previous != null && _document == null) {
+          _attempted.remove(_key);
+          _notice = '歌曲信息已更新，正在重新核对歌词版本。';
+        }
+        notifyListeners();
+        _scheduleAutomatic();
+      }
+      return;
+    }
+    _autoTimer?.cancel();
+    _automaticSearch = false;
     _key = key;
+    _cacheKey = key == null ? null : _stableCacheKey(key);
     _generation++;
     _busy = false;
     _candidates = const [];
     _error = null;
     _notice = null;
-    _document = _cache[key];
+    _document = _cachedForTrack();
     notifyListeners();
+    _scheduleAutomatic();
   }
 
   Future<void> search({
     required String title,
     required String artist,
     required String album,
+  }) => _search(title: title, artist: artist, album: album);
+
+  Future<void> _search({
+    required String title,
+    required String artist,
+    required String album,
+    bool automatic = false,
   }) async {
     if (_disposed || _key == null || _busy) return;
     _error = null;
@@ -121,7 +289,7 @@ class LyricsController extends ChangeNotifier {
     title = title.trim();
     artist = artist.trim();
     album = album.trim();
-    if (title.isEmpty || artist.isEmpty) {
+    if (title.isEmpty || (!automatic && artist.isEmpty)) {
       _error = '请输入歌名和歌手，以免下载错误版本的歌词。';
       notifyListeners();
       return;
@@ -131,50 +299,45 @@ class LyricsController extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _autoTimer?.cancel();
     final revision = ++_generation;
     _busy = true;
+    _automaticSearch = automatic;
     _searchInFlight = true;
     _candidates = const [];
     notifyListeners();
     try {
-      final response = await _platform
-          .get(
-            Uri.https('lrclib.net', '/api/search', {
-              'track_name': title,
-              'artist_name': artist,
-              if (album.isNotEmpty) 'album_name': album,
-            }),
-          )
-          .timeout(const Duration(seconds: 20));
-      // 即使所选歌曲已变化，限流仍属于当前服务提供方。
-      if (response.statusCode == 429 || response.statusCode == 503) {
-        _retryAt = _now().add(_retryDelay(response.retryAfter));
-        throw const LyricsException('歌词服务繁忙或请求过于频繁，请稍后重试。');
-      }
-      if (response.statusCode != 200) {
-        throw LyricsException(
-          '歌词服务暂时不可用（${response.statusCode}），请稍后重试或导入本地歌词。',
-        );
-      }
+      var results = await _request(title, artist, album);
       if (!_isCurrent(revision)) return;
-      if (utf8.encode(response.body).length > maxLyricsResponseBytes) {
-        throw const FormatException('返回内容过大');
+      // 专辑标签可能来自精选集或文件夹；无结果时放宽专辑，不放宽版本核验。
+      if (automatic && results.isEmpty && album.isNotEmpty) {
+        results = await _request(title, artist, '');
+        if (!_isCurrent(revision)) return;
       }
-      final decoded = jsonDecode(response.body);
-      if (decoded is! List) throw const FormatException('返回格式错误');
-      final results = <LyricsCandidate>[];
-      for (final row in decoded.take(20)) {
-        try {
-          final result = LyricsCandidate.fromJson(row as Map<String, dynamic>);
-          if (!result.document.isEmpty) results.add(result);
-        } catch (_) {
-          // 跳过格式错误的记录，避免将其视为有效匹配。
-        }
+      if (automatic) {
+        results.sort(
+          (a, b) => lyricsMatchScore(
+            _track!,
+            b,
+          ).compareTo(lyricsMatchScore(_track!, a)),
+        );
       }
       _candidates = List.unmodifiable(results);
       _notice = results.isEmpty
           ? '没有找到歌词。可修改歌名/歌手、清空专辑后再试，或导入本地 LRC / TXT。'
           : '请选择对应版本。搜索结果可能不准确，请核对歌手、专辑和时长。';
+      if (automatic) {
+        final match = confidentLyricsMatch(_track!, results);
+        if (match != null) {
+          await _save(
+            match.document,
+            revision: revision,
+            automaticMatch: match,
+          );
+        } else if (results.isNotEmpty) {
+          _notice = '找到 ${results.length} 个歌词版本，暂不能可靠确认。请在歌词选项中选择。';
+        }
+      }
     } catch (error) {
       if (_isCurrent(revision)) _error = _message(error);
     } finally {
@@ -182,8 +345,49 @@ class LyricsController extends ChangeNotifier {
       if (_isCurrent(revision)) {
         _busy = false;
         notifyListeners();
+      } else {
+        // 旧请求结束后接续当前歌曲，绝不把旧歌词贴到新歌。
+        _scheduleAutomatic();
       }
     }
+  }
+
+  Future<List<LyricsCandidate>> _request(
+    String title,
+    String artist,
+    String album,
+  ) async {
+    final response = await _platform
+        .get(
+          Uri.https('lrclib.net', '/api/search', {
+            'track_name': title,
+            if (artist.isNotEmpty) 'artist_name': artist,
+            if (album.isNotEmpty) 'album_name': album,
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode == 429 || response.statusCode == 503) {
+      _retryAt = _now().add(_retryDelay(response.retryAfter));
+      throw const LyricsException('歌词服务繁忙或请求过于频繁，请稍后重试。');
+    }
+    if (response.statusCode != 200) {
+      throw LyricsException('歌词服务暂时不可用（${response.statusCode}），请稍后重试或导入本地歌词。');
+    }
+    if (utf8.encode(response.body).length > maxLyricsResponseBytes) {
+      throw const FormatException('返回内容过大');
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! List) throw const FormatException('返回格式错误');
+    final results = <LyricsCandidate>[];
+    for (final row in decoded.take(50)) {
+      try {
+        final result = LyricsCandidate.fromJson(row as Map<String, dynamic>);
+        if (!result.document.isEmpty) results.add(result);
+      } catch (_) {
+        /* 跳过损坏记录，不影响有效结果。 */
+      }
+    }
+    return results;
   }
 
   Future<void> choose(LyricsCandidate candidate) async {
@@ -227,12 +431,16 @@ class LyricsController extends ChangeNotifier {
     }
   }
 
-  Future<void> _save(LyricsDocument doc, {int? revision}) async {
+  Future<void> _save(
+    LyricsDocument doc, {
+    int? revision,
+    LyricsCandidate? automaticMatch,
+  }) async {
     if (doc.isEmpty) {
       throw const LyricsException('没有可显示的歌词，请选择 UTF-8 的 LRC 或纯文本内容。');
     }
     final current = revision ?? ++_generation;
-    final key = _key!;
+    final key = _cacheKey!;
     _busy = true;
     _error = null;
     notifyListeners();
@@ -240,12 +448,18 @@ class LyricsController extends ChangeNotifier {
     if (!_isCurrent(current)) return;
     _cache.remove(key);
     _cache[key] = doc;
+    if (automaticMatch == null) {
+      _automaticMatches.remove(key);
+    } else {
+      _automaticMatches[key] = automaticMatch;
+    }
     _document = doc;
     _candidates = const [];
     var raw = _serializeCache();
     while ((_cache.length > 100 ||
             utf8.encode(raw).length > maxLyricsCacheBytes - 1024) &&
         _cache.length > 1) {
+      _automaticMatches.remove(_cache.keys.first);
       _cache.remove(_cache.keys.first);
       raw = _serializeCache();
     }
@@ -267,7 +481,17 @@ class LyricsController extends ChangeNotifier {
 
   String _serializeCache() => jsonEncode({
     'version': 1,
+    'automaticSearch': _automaticEnabled,
     'entries': _cache.map((key, value) => MapEntry(key, value.toJson())),
+    'automaticMatches': _automaticMatches.map(
+      (key, value) => MapEntry(key, {
+        'id': value.id,
+        'title': value.title,
+        'artist': value.artist,
+        'album': value.album,
+        'durationMs': value.duration.inMilliseconds,
+      }),
+    ),
   });
 
   Duration _retryDelay(String? value) {
@@ -314,8 +538,18 @@ class LyricsController extends ChangeNotifier {
     );
   }
 
+  // 用户编辑查询或本地导入时暂停当前曲目的自动尝试。
+  void suspendAutomaticSelection() {
+    _autoTimer?.cancel();
+    if (_key != null) _attempted[_key!] = _now();
+    if (searchingAutomatically) cancelSearch();
+    _automaticSearch = false;
+  }
+
   void cancelSearch() {
     if (_disposed) return;
+    _autoTimer?.cancel();
+    if (_key != null) _attempted[_key!] = _now();
     _generation++;
     _busy = false;
     _candidates = const [];
@@ -341,6 +575,7 @@ class LyricsController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _autoTimer?.cancel();
     _generation++;
     _platform.dispose();
     super.dispose();

@@ -161,6 +161,16 @@ void main() {
     await tester.tap(find.byTooltip('查看歌词'));
     await tester.pumpAndSettle();
     await capture('phone-lyrics');
+    await tester.tap(find.byKey(const Key('lyrics-options')));
+    await tester.pumpAndSettle();
+    await capture('phone-lyrics-options');
+    await tester.tap(find.byKey(const Key('lyrics-auto-switch')));
+    await tester.pumpAndSettle();
+    await capture('phone-auto-consent');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('待播清单'));
     await capture('phone-queue');
     await tester.tap(find.byTooltip('返回资料库'));

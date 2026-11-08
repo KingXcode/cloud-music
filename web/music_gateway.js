@@ -312,6 +312,22 @@
         if (disposed || generation !== playGeneration) return;
         url = URL.createObjectURL(file); audio.src = url; audio.volume = state.volume;
         status(id, 'ready');
+        // 标签解析独立于播放，且旧歌曲、旧资料库的异步结果不可回写。
+        const sourceIdentity = state.sourceIdentity;
+        const current = () => !disposed && generation === playGeneration &&
+          sourceIdentity === state.sourceIdentity && entries.get(id) === entry;
+        if (typeof window.readCloudMusicMetadata === 'function') {
+          void Promise.resolve().then(() => window.readCloudMusicMetadata(file, current)).then(tags => {
+            if (!current() || !tags) return;
+            const metadata = {};
+            for (const key of ['title', 'artist', 'album']) {
+              if (typeof tags[key] === 'string' && tags[key].trim()) metadata[key] = tags[key].trim().slice(0, 1024);
+            }
+            if (!Object.keys(metadata).length) return;
+            state.tracks = state.tracks.map(t => t.id === id ? {...t, ...metadata} : t);
+            emit(true);
+          }).catch(() => {});
+        }
         await audio.play();
         if (disposed || generation !== playGeneration) return;
         state.isLoading = false; state.isPlaying = !audio.paused; emit(true);

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../lyrics/lyrics_controller.dart';
 import '../lyrics/lyrics_models.dart';
 
-/// 仅在局部重建的歌词视图，打开此面板不会连接服务器。
+/// 仅在局部重建的歌词视图；自动联网状态由用户的一次性授权控制。
 class LyricsPanel extends StatefulWidget {
   const LyricsPanel({
     super.key,
@@ -81,6 +81,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     final track = c.track;
     final selection = c.selectionIdentity;
     if (_dialogOpen || c.busy || track == null) return;
+    c.suspendAutomaticSelection();
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
     final query = await showDialog<List<String>>(
@@ -103,11 +104,53 @@ class _LyricsPanelState extends State<LyricsPanel> {
     await c.search(title: query[0], artist: query[1], album: query[2]);
   }
 
+  Future<void> _toggleAutomatic(bool enabled) async {
+    final c = widget.controller;
+    if (!enabled) {
+      await c.setAutomaticSearch(false);
+      return;
+    }
+    if (_dialogOpen) return;
+    setState(() => _dialogOpen = true);
+    _refreshSheet?.call(() {});
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        key: const Key('lyrics-auto-consent'),
+        title: const Text('开启自动歌词'),
+        scrollable: true,
+        content: const Text(
+          '开启后，播放所选歌曲时会自动向 LRCLIB（lrclib.net）发送歌名、歌手和可选专辑名；该服务也会看到你的 IP 地址。不会上传音频、文件路径或时长，也不会扫描整库联网。\n\n'
+          '仅在歌名、歌手、版本和时长匹配可靠时自动保存歌词；不确定时由你选择。歌词仅缓存到本机，版权归原权利人，请仅在获准使用时下载。\n\n'
+          '记住本机选择，之后无需逐曲确认。可随时在歌词选项中关闭。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('暂不开启'),
+          ),
+          FilledButton(
+            key: const Key('lyrics-auto-confirm'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('同意并开启'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _dialogOpen = false);
+    _refreshSheet?.call(() {});
+    if (accepted == true && c == widget.controller) {
+      await c.setAutomaticSearch(true);
+    }
+  }
+
   Future<void> _paste() async {
     final c = widget.controller;
     final track = c.track;
     final selection = c.selectionIdentity;
     if (_dialogOpen || c.busy || track == null) return;
+    c.suspendAutomaticSelection();
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
     final text = await showDialog<String>(
@@ -192,6 +235,21 @@ class _LyricsPanelState extends State<LyricsPanel> {
     final c = widget.controller;
     final enabled = c.track != null && !c.busy && !_dialogOpen;
     return [
+      Material(
+        color: Colors.transparent,
+        child: SwitchListTile.adaptive(
+          key: const Key('lyrics-auto-switch'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('自动搜索歌词'),
+          subtitle: Text(
+            c.automaticEnabled
+                ? '已开启 · LRCLIB · 仅发送歌曲信息，不上传音频'
+                : '一次开启，播放时自动匹配并缓存到本机',
+          ),
+          value: c.automaticEnabled,
+          onChanged: _dialogOpen ? null : _toggleAutomatic,
+        ),
+      ),
       Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -222,7 +280,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
       if (c.busy) ...[
         const SizedBox(height: 8),
         const LinearProgressIndicator(key: Key('lyrics-loading')),
-        const Text('正在处理歌词…'),
+        Text(c.searchingAutomatically ? '正在自动匹配歌词…' : '正在处理歌词…'),
       ],
       if (c.error != null)
         Padding(
@@ -412,11 +470,13 @@ class _LyricsPanelState extends State<LyricsPanel> {
           Center(
             child: TextButton.icon(
               key: const Key('lyrics-add'),
-              onPressed: _showOptions,
+              onPressed: widget.controller.automaticEnabled
+                  ? _showOptions
+                  : () => _toggleAutomatic(true),
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                '搜索或导入歌词',
-                style: TextStyle(color: Colors.white),
+              label: Text(
+                widget.controller.automaticEnabled ? '选择版本 / 歌词选项' : '开启自动歌词',
+                style: const TextStyle(color: Colors.white),
               ),
             ),
           ),
@@ -460,7 +520,15 @@ class _LyricsPanelState extends State<LyricsPanel> {
                 ? '先选择一首歌曲'
                 : document?.instrumental == true
                 ? '纯音乐 · 无歌词'
-                : '暂无歌词\n可搜索下载，或导入本地 .lrc / .txt 文件。',
+                : widget.controller.searchingAutomatically
+                ? '正在自动匹配歌词…'
+                : widget.controller.error != null
+                ? '${widget.controller.error}\n播放不受影响，可在歌词选项中重试。'
+                : widget.controller.candidates.isNotEmpty
+                ? '找到 ${widget.controller.candidates.length} 个歌词版本\n请在歌词选项中核对选择，避免匹配错误。'
+                : widget.controller.automaticEnabled
+                ? widget.controller.notice ?? '自动歌词已开启\n正在准备歌曲信息…'
+                : '开启自动歌词\n播放时智能匹配，下载后可离线查看。',
             key: const Key('lyrics-empty'),
             textAlign: TextAlign.center,
             style: const TextStyle(color: Color(0xFF9FAABD), height: 1.7),

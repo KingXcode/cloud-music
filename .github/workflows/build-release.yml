@@ -33,7 +33,7 @@ jobs:
           CHROME_EXECUTABLE: /usr/bin/google-chrome
         run: flutter test --platform chrome test/lyrics_web_test.dart
       - name: Browser gateway tests
-        run: node --test test/web/music_gateway_test.cjs
+        run: node --test test/web/*.cjs
   android:
     needs: checks
     runs-on: ubuntu-latest

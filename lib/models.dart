@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'track_identity.dart';
+
 enum TrackAvailability { ready, cloud, offline, missing, unsupported, unknown }
 
 enum RepeatMode { off, all, one }
@@ -18,19 +20,26 @@ class Track {
   final TrackAvailability availability;
   final Duration duration;
 
-  factory Track.fromMap(Map<Object?, Object?> map) => Track(
-    id: map['id'] as String? ?? '',
-    title: map['title'] as String? ?? '未命名音频',
-    artist: map['artist'] as String? ?? '',
-    album: map['album'] as String? ?? '',
-    relativePath: map['relativePath'] as String? ?? '',
-    availability:
-        TrackAvailability.values
-            .where((s) => s.name == map['status'])
-            .firstOrNull ??
-        TrackAvailability.unknown,
-    duration: Duration(milliseconds: _positiveInt(map['durationMs'])),
-  );
+  factory Track.fromMap(Map<Object?, Object?> map) {
+    final identity = normalizeTrackIdentity(
+      title: map['title'] as String? ?? '',
+      artist: map['artist'] as String? ?? '',
+      relativePath: map['relativePath'] as String? ?? '',
+    );
+    return Track(
+      id: map['id'] as String? ?? '',
+      title: identity.title,
+      artist: identity.artist,
+      album: map['album'] as String? ?? '',
+      relativePath: map['relativePath'] as String? ?? '',
+      availability:
+          TrackAvailability.values
+              .where((s) => s.name == map['status'])
+              .firstOrNull ??
+          TrackAvailability.unknown,
+      duration: Duration(milliseconds: _positiveInt(map['durationMs'])),
+    );
+  }
 
   Track copyWith({
     String? title,

@@ -24,7 +24,7 @@ jobs:
         env:
           CHROME_EXECUTABLE: /usr/bin/google-chrome
         run: flutter test --platform chrome test/lyrics_web_test.dart
-      - run: node --test test/web/music_gateway_test.cjs
+      - run: node --test test/web/*.cjs
       - name: Build for the repository Pages path
         env:
           REPOSITORY_NAME: ${{ github.event.repository.name }}

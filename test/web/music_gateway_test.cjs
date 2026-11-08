@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('web/music_gateway.js', 'utf8');
 const tick = () => new Promise(r => setTimeout(r, 20));
-function harness({handle = null, cached = null, picker, browser = {}, directoryInput = true, clickError, blockedDatabase = false} = {}) {
+function harness({handle = null, cached = null, picker, browser = {}, directoryInput = true, clickError, blockedDatabase = false, metadataReader} = {}) {
   const events = [], urls = new Set(), revoked = [];
   let picked = 0, audio, input;
   const document = {body: {append() {}}, createElement() {
@@ -37,6 +37,7 @@ function harness({handle = null, cached = null, picker, browser = {}, directoryI
   }, localStorage: {getItem: () => cached && JSON.stringify(cached), setItem: (_, v) => {cached = JSON.parse(v);}},
   indexedDB: {open() { const r = {}; if (!blockedDatabase) setTimeout(() => {r.result = db; r.onsuccess();}, 0); return r;}}, window: {navigator: browser}};
   if (picker) context.window.showDirectoryPicker = async () => {picked++; return picker();};
+  context.window.readCloudMusicMetadata = metadataReader;
   vm.runInNewContext(source, context);
   const gateway = context.window.createCloudMusicGateway(s => events.push(s));
   return {gateway, events, urls, revoked, get input() {return input;}, get audio() {return audio;}, get picked() {return picked;}, get cached() {return cached;}};
@@ -330,4 +331,33 @@ test('saved handle identity wins over mismatched metadata cache', async () => {
   await h.gateway.initialize(); await tick();
   assert.equal(h.events.at(-1).sourceIdentity, 'actual-root');
   h.gateway.dispose();
+});
+
+test('embedded tags update snapshot and cache without delaying Blob playback', async () => {
+  let finish;
+  const h = harness({handle:directory({'file.mp3':file('file.mp3')}), metadataReader:() => new Promise(r => finish = r)});
+  await h.gateway.initialize(); await tick();
+  await h.gateway.command('play', {id:'file.mp3'});
+  assert.equal(h.audio.paused, false); assert.equal(h.urls.size, 1);
+  finish({title:'晴天', artist:'周杰伦', album:'叶惠美'}); await tick();
+  assert.equal(h.events.at(-1).tracks[0].title, '晴天');
+  assert.equal(h.cached.tracks[0].artist, '周杰伦'); h.gateway.dispose();
+});
+test('late embedded tags cannot overwrite a newly selected song or library', async () => {
+  const pending = [];
+  const h = harness({handle:directory({'a.mp3':file('a.mp3'), 'b.mp3':file('b.mp3')}), metadataReader:() => new Promise(r => pending.push(r))});
+  await h.gateway.initialize(); await tick();
+  await h.gateway.command('play', {id:'a.mp3'});
+  await h.gateway.command('play', {id:'b.mp3'});
+  pending[0]({title:'stale'}); await tick();
+  assert.equal(h.events.at(-1).tracks[0].title, 'a');
+  await h.gateway.command('pickFolder');
+  h.input.files = [{name:'b.mp3'}]; h.input.listeners.change();
+  pending[1]({title:'old library'}); await tick();
+  assert.equal(h.events.at(-1).tracks[0].title, 'b'); h.gateway.dispose();
+});
+test('metadata parser failure never blocks original playback', async () => {
+  const h = harness({handle:directory({'a.mp3':file('a.mp3')}), metadataReader:() => {throw new Error('bad tag');}});
+  await h.gateway.initialize(); await tick(); await h.gateway.command('play', {id:'a.mp3'}); await tick();
+  assert.equal(h.audio.paused, false); assert.equal(h.events.at(-1).tracks[0].title, 'a'); h.gateway.dispose();
 });
