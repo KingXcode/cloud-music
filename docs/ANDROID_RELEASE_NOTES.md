@@ -1,6 +1,8 @@
-# Android 0.5.0 Google Drive 预览
+# Android 0.5.1 按需读取体验预览
 
-新增音乐来源入口与 Google Drive 官方只读接入实现。需要配置 Google OAuth 客户端、Android 包名和实际安装包签名 SHA 后才可直接登录；未配置的预览版显示明确说明，系统文件播放仍可用。
+本版统一可用状态文案和扫描提示。Apple iCloud promised 元数据、渐进列表与浏览器按需读取代码同步更新，但 Android APK 不包含 Apple 功能，也不能证明真实 iCloud / Safari 行为。详见 [平台限制与验收](https://github.com/KingXcode/cloud-music/blob/main/docs/ICLOUD_ON_DEMAND.md)。
+
+保留音乐来源入口与 Google Drive 官方只读接入实现。需要配置 Google OAuth 客户端、Android 包名和实际安装包签名 SHA 后才可直接登录；未配置的预览版显示明确说明，系统文件播放仍可用。
 
 Google Drive 支持文件夹浏览、递归会话索引、受保护 HTTPS 播放、切换/取消/重新连接。没有真实 Google 账户或原生设备联调；后台播放、锁屏控制、音频焦点和车机行为尚未验收。Apple 安装包不包含在本次发布。
 

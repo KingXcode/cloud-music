@@ -1,0 +1,34 @@
+name: Verify Apple metadata-only indexing
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  BOT: 'true'
+  CI: 'true'
+  FLUTTER_SUPPRESS_ANALYTICS: 'true'
+  DART_SUPPRESS_ANALYTICS: 'true'
+jobs:
+  metadata:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and test promised metadata and truthful availability rules
+        run: |
+          swiftc packages/folder_audio/darwin/folder_audio/Sources/folder_audio/CloudFileMetadata.swift test/apple/metadata_tests.swift -o "$RUNNER_TEMP/cloud-metadata-tests"
+          "$RUNNER_TEMP/cloud-metadata-tests"
+      - run: bash scripts/ci_flutter.sh
+      - run: flutter precache --ios --macos
+      - name: Type-check complete bridge against iOS and macOS SDKs without app packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          ENGINE="$RUNNER_TEMP/cloud-music-flutter/bin/cache/artifacts/engine"
+          MAC_FRAMEWORK=$(find "$ENGINE/darwin-x64" -type d -name FlutterMacOS.framework | head -1)
+          IOS_FRAMEWORK=$(find "$ENGINE/ios-release" -type d -path '*/ios-arm64/Flutter.framework' | head -1)
+          test -n "$MAC_FRAMEWORK" && test -n "$IOS_FRAMEWORK"
+          SOURCES=packages/folder_audio/darwin/folder_audio/Sources/folder_audio
+          xcrun --sdk macosx swiftc -typecheck -swift-version 5 -target arm64-apple-macosx12.0 -sdk "$(xcrun --sdk macosx --show-sdk-path)" -F "$(dirname "$MAC_FRAMEWORK")" "$SOURCES/CloudFileMetadata.swift" "$SOURCES/FolderAudioPlugin.swift"
+          xcrun --sdk iphoneos swiftc -typecheck -swift-version 5 -target arm64-apple-ios15.0 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -F "$(dirname "$IOS_FRAMEWORK")" "$SOURCES/CloudFileMetadata.swift" "$SOURCES/FolderAudioPlugin.swift"

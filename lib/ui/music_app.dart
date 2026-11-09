@@ -288,6 +288,26 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           ),
                                         ),
                                       ),
+                                      if (s.sourceKind == 'web' ||
+                                          s.sourceKind == 'apple')
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 12,
+                                          ),
+                                          child: Text(
+                                            s.sourceKind == 'web'
+                                                ? '本页只在播放时读取音频。网页无法判断 iCloud 下载状态；系统可能在选择文件时先下载。'
+                                                : '先显示文件名和下载状态，点歌才下载。首次列表取决于系统已同步的目录信息。',
+                                            key: const Key(
+                                              'source-loading-help',
+                                            ),
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 12,
+                                              height: 1.5,
+                                            ),
+                                          ),
+                                        ),
                                       TextField(
                                         key: const Key('library-search'),
                                         controller: _search,
@@ -344,9 +364,25 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           ),
                                         ),
                                       if (s.isScanning)
-                                        const Padding(
-                                          padding: EdgeInsets.only(top: 12),
-                                          child: LinearProgressIndicator(),
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 12,
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              const LinearProgressIndicator(),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                '正在列出歌曲 · 已显示 ${s.tracks.length} 首',
+                                                style: const TextStyle(
+                                                  color: _muted,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                     ],
                                   ),
@@ -364,6 +400,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                   hasScrollBody: false,
                                   child: _EmptyLibrary(
                                     hasFolder: s.folderName != null,
+                                    scanning: s.isScanning,
                                     filesOnly: s.selectsFiles,
                                     busy: c.isBusy,
                                     onPick: c.pickFolder,
@@ -792,12 +829,13 @@ class _LibraryPlayButton extends StatelessWidget {
 class _EmptyLibrary extends StatelessWidget {
   const _EmptyLibrary({
     required this.hasFolder,
+    this.scanning = false,
     required this.filesOnly,
     required this.busy,
     required this.onPick,
     required this.onRefresh,
   });
-  final bool hasFolder, filesOnly, busy;
+  final bool hasFolder, filesOnly, busy, scanning;
   final VoidCallback onPick, onRefresh;
   @override
   Widget build(BuildContext context) => Padding(
@@ -820,7 +858,11 @@ class _EmptyLibrary extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         Text(
-          hasFolder ? '这里还没有音乐' : '你的音乐，不必搬家',
+          scanning
+              ? '正在读取目录'
+              : hasFolder
+              ? '这里还没有音乐'
+              : '你的音乐，不必搬家',
           textAlign: TextAlign.center,
           style: const TextStyle(
             fontSize: 24,
@@ -832,7 +874,9 @@ class _EmptyLibrary extends StatelessWidget {
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 390),
           child: Text(
-            filesOnly
+            scanning
+                ? '目录信息就绪后会陆续显示歌曲，无需等待音频下载。'
+                : filesOnly
                 ? '在“文件”中打开音乐所在位置，可多选歌曲。\n刷新网页后需重新选择，音频不会上传。'
                 : hasFolder
                 ? '将音频放进所选文件夹后刷新，或选择另一个文件夹。'
@@ -888,15 +932,18 @@ class _TrackRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = switch (track.availability) {
-      TrackAvailability.ready => ('设备可用', CupertinoIcons.checkmark_circle),
-      TrackAvailability.cloud => ('云端 · 需下载', CupertinoIcons.cloud_download),
-      TrackAvailability.offline => ('离线不可用', CupertinoIcons.wifi_slash),
+      TrackAvailability.ready => ('内容可用', CupertinoIcons.checkmark_circle),
+      TrackAvailability.cloud => ('未下载 · 播放时下载', CupertinoIcons.cloud_download),
+      TrackAvailability.unloaded => ('未读取 · 播放时加载', CupertinoIcons.play_circle),
+      TrackAvailability.accessRequired => ('需重新授权或选择', CupertinoIcons.folder),
+      TrackAvailability.loading => ('正在准备', CupertinoIcons.hourglass),
+      TrackAvailability.offline => ('暂时不可用', CupertinoIcons.wifi_slash),
       TrackAvailability.missing => ('文件已移走', CupertinoIcons.folder),
       TrackAvailability.unsupported => (
         '格式不支持',
         CupertinoIcons.exclamationmark_circle,
       ),
-      TrackAvailability.unknown => ('待检查', CupertinoIcons.question_circle),
+      TrackAvailability.unknown => ('状态待确认', CupertinoIcons.question_circle),
     };
     final secondary = dark ? _playerMuted : _muted;
     return Material(

@@ -199,9 +199,9 @@ void main() {
     );
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pump();
-    expect(find.text('设备可用'), findsOneWidget);
-    expect(find.text('云端 · 需下载'), findsOneWidget);
-    expect(find.text('离线不可用'), findsOneWidget);
+    expect(find.text('内容可用'), findsOneWidget);
+    expect(find.text('未下载 · 播放时下载'), findsOneWidget);
+    expect(find.text('暂时不可用'), findsOneWidget);
     expect(find.text('文件已移走'), findsOneWidget);
     expect(find.text('格式不支持'), findsOneWidget);
     await tester.tap(find.byTooltip('取消加载'));

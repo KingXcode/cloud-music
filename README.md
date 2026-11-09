@@ -6,6 +6,8 @@
 
 ## 功能介绍
 
+- iCloud 目录分批展示歌曲，Apple 原生端用系统属性标记未下载并按点播请求下载；网页按浏览器能力先列名称、点播读取，不虚构 iCloud 下载状态。Safari/iOS 选择器可能提前下载，详见 [按需读取与平台限制](docs/ICLOUD_ON_DEMAND.md)。
+
 - 新增「音乐来源」入口与 Google Drive 官方只读接入代码：授权后浏览音乐目录、建立会话曲库和播放。**需要开发者 OAuth Client ID；未配置版本不能直接登录，真实账号/设备尚未联调。** 详见 [Google Drive 配置和限制](docs/GOOGLE_DRIVE.md)。
 - 在 Apple 设备上选择 iCloud Drive 文件夹，或通过 Android 系统选择器选择本地、USB 目录。
 - 保存访问权限和元数据索引，通过原始 URL/URI 播放，不将歌曲复制到应用沙盒。

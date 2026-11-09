@@ -21,9 +21,10 @@
       r.onblocked = () => reject(new Error('Database blocked'));
     });
   }
-  async function savedHandle(value, write = false) {
+  async function savedHandle(value, write = false, current = () => true) {
     const db = await database();
     try {
+      if (!current()) return;
       return await new Promise((resolve, reject) => {
         const tx = db.transaction('handles', write ? 'readwrite' : 'readonly');
         const store = tx.objectStore('handles');
@@ -52,7 +53,7 @@
       positionMs: 0, durationMs: 0, repeatMode: 'off', volume: 1, message: null};
     let root = null, entries = new Map(), disposed = false, initialized = false;
     let playGeneration = 0, scanGeneration = 0, url = null, picking = false, permissionBusy = false;
-    let pickerCleanup = null;
+    let pickerCleanup = null, cancelPreparation = null;
     const history = [], shuffleVisited = new Set();
     const snapshot = () => ({...state, tracks: state.tracks.map(t => ({...t}))});
     function save() {
@@ -68,6 +69,8 @@
     }
     function clearAudio() {
       ++playGeneration;
+      cancelPreparation?.();
+      if (state.currentTrackId && state.isLoading) status(state.currentTrackId, entries.has(state.currentTrackId) ? 'unloaded' : 'accessRequired');
       audio.pause();
       audio.removeAttribute('src');
       audio.load();
@@ -91,10 +94,10 @@
       state.tracks = state.tracks.map(t => t.id === state.currentTrackId ? {...t, durationMs: state.durationMs} : t);
       emit();
     });
-    on('playing', () => { if (!url) return; state.isPlaying = true; state.isLoading = false; emit(); });
+    on('playing', () => { if (!url) return; state.isPlaying = true; state.isLoading = false; status(state.currentTrackId, 'ready'); emit(); });
     on('pause', () => { state.isPlaying = false; emit(); });
     on('waiting', () => { if (url && !audio.paused) { state.isLoading = true; emit(); } });
-    on('canplay', () => { state.isLoading = false; emit(); });
+    on('canplay', () => { if (!url) return; state.isLoading = false; status(state.currentTrackId, 'ready'); emit(); });
     on('error', () => {
       if (!url || !audio.error) return;
       state.isPlaying = false; state.isLoading = false;
@@ -111,11 +114,42 @@
 
     async function scan(handle, explicit, replacing = false) {
       const generation = ++scanGeneration;
-      // 确认新选择后，立即使尚未完成的旧文件读取失效。
-      if (replacing) clearAudio();
+      const previous = {root, entries, tracks: state.tracks, folderName: state.folderName,
+        sourceIdentity: state.sourceIdentity};
+      // 新选择已确认，即使来源比较或枚举很慢，也不允许旧歌曲的待处理读取自动播放。
+      if (replacing && state.isLoading) clearAudio();
+      let committed = !replacing;
+      let sameSource = handle === root;
+      if (replacing && !sameSource && root && typeof handle.isSameEntry === 'function') {
+        try { sameSource = await handle.isSameEntry(root); } catch (_) {}
+      }
+      if (disposed || generation !== scanGeneration) return;
+      const old = new Map((replacing ? [] : previous.tracks).map(t => [t.id, t]));
       state.isScanning = true; state.message = null; emit();
       const found = new Map(), failed = [], directoryChildren = new Map();
-      let rootError = null;
+      let rootError = null, lastPublished = 0;
+      function publish() {
+        if (disposed || generation !== scanGeneration) return;
+        if (!committed) {
+          clearAudio(); history.length = 0; shuffleVisited.clear(); state.currentTrackId = null;
+          root = handle; state.folderName = handle.name;
+          if (!sameSource) state.sourceIdentity = newSourceIdentity();
+          entries = new Map(); state.tracks = []; committed = true;
+        }
+        const currentTracks = new Map(state.tracks.map(t => [t.id, t]));
+        for (const [path, entry] of found) {
+          entries.set(path, entry);
+          const prior = currentTracks.get(path) || old.get(path);
+          currentTracks.set(path, {...prior, id: path,
+            title: prior?.title || path.split('/').pop().replace(/\.[^.]+$/, ''),
+            artist: prior?.artist || '', album: prior?.album || '', relativePath: path,
+            status: prior?.status && prior.status !== 'accessRequired' && prior.status !== 'missing'
+              ? prior.status : 'unloaded', durationMs: prior?.durationMs || 0});
+        }
+        state.tracks = [...currentTracks.values()].sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
+        lastPublished = found.size;
+        emit();
+      }
       async function walk(directory, prefix) {
         try {
           for await (const [name, child] of directory.entries()) {
@@ -124,13 +158,27 @@
             if (!directoryChildren.has(prefix)) directoryChildren.set(prefix, []);
             directoryChildren.get(prefix).push({name, kind: child.kind});
             if (child.kind === 'directory') await walk(child, path + '/');
-            else if (extensions.test(name)) found.set(path, {handle: child});
+            else if (extensions.test(name)) {
+              found.set(path, {handle: child});
+              // 首首立即显示，之后分批发布；不调用 getFile 或读取音频标签。
+              if (found.size === 1 || found.size - lastPublished >= 32) publish();
+            }
           }
         } catch (e) { if (!prefix) rootError = e; failed.push(prefix); }
+        if (!rootError && found.size !== lastPublished) publish();
       }
       await walk(handle, '');
       if (disposed || generation !== scanGeneration) return;
-      if (rootError) { state.isScanning = false; state.message = messageFor(rootError); emit(); return; }
+      if (rootError) {
+        if (replacing && committed) {
+          clearAudio(); history.length = 0; shuffleVisited.clear(); state.currentTrackId = null;
+          root = previous.root; entries = previous.entries;
+          state.tracks = previous.tracks.map(t => ({...t, status: previous.entries.has(t.id) ? 'unloaded' : 'accessRequired'}));
+          state.folderName = previous.folderName; state.sourceIdentity = previous.sourceIdentity;
+        }
+        state.isScanning = false; state.message = messageFor(rootError); emit(true); return;
+      }
+      publish();
       // 目录列表中未出现文件不能作为缺失证明：云端或可移动存储提供器
       // 可能暂时返回空或不完整的列表，却不抛出异常。
       async function confirmedMissing(path) {
@@ -161,40 +209,33 @@
         } catch (_) { return false; }
       }
       let unconfirmed = false;
-      const old = new Map((replacing ? [] : state.tracks).map(t => [t.id, t]));
       const tracks = [];
+      const latestTracks = new Map(state.tracks.map(t => [t.id, t]));
       for (const [path] of found) {
-        const prior = old.get(path);
+        const prior = latestTracks.get(path) || old.get(path);
         tracks.push({...prior, id: path, title: prior?.title || path.split('/').pop().replace(/\.[^.]+$/, ''),
           artist: prior?.artist || '', album: prior?.album || '', relativePath: path,
           // 目录列表不能证明云端文件内容已可离线读取。
-          status: prior?.status === 'unsupported' ? 'unsupported' : 'unknown', durationMs: prior?.durationMs || 0});
+          status: prior?.status || 'unloaded', durationMs: prior?.durationMs || 0});
       }
+      const discovered = new Set(found.keys());
       for (const [id, track] of old) {
         if (found.has(id)) continue;
         const confirmed = await confirmedMissing(id);
         if (disposed || generation !== scanGeneration) return;
         if (!confirmed) unconfirmed = true;
         if (!explicit || !confirmed) {
-          tracks.push({...track, status: confirmed ? 'missing' : 'unknown'});
+          tracks.push({...track, status: confirmed ? 'missing' : (entries.has(id) ? 'unloaded' : 'accessRequired')});
           if (entries.has(id)) found.set(id, entries.get(id));
         }
       }
-      if (replacing) {
-        let sameSource = handle === root;
-        if (!sameSource && root && typeof handle.isSameEntry === 'function') {
-          try { sameSource = await handle.isSameEntry(root); } catch (_) {}
-        }
-        if (disposed || generation !== scanGeneration) return;
-        if (!sameSource) state.sourceIdentity = newSourceIdentity();
-        clearAudio(); history.length = 0; state.currentTrackId = null;
-        root = handle; state.folderName = handle.name;
-        try { await savedHandle({handle, sourceIdentity: state.sourceIdentity}, true); }
-        catch (_) { state.message = '浏览器无法保存文件夹授权，下次打开可能需要重新选择。'; }
-        if (disposed || generation !== scanGeneration) return;
-      }
       state.isScanning = false;
       entries = found;
+      // 缺失确认期间可能已经播放或解析了歌曲，保留这些较新的状态。
+      const live = new Map(state.tracks.map(t => [t.id, t]));
+      for (let i = 0; i < tracks.length; i++) {
+        if (discovered.has(tracks[i].id) && live.has(tracks[i].id)) tracks[i] = live.get(tracks[i].id);
+      }
       state.tracks = tracks.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
       if (state.currentTrackId && !state.tracks.some(t => t.id === state.currentTrackId)) {
         clearAudio(); state.currentTrackId = null;
@@ -203,6 +244,14 @@
       else if (unconfirmed) state.message = '部分原有歌曲暂时无法确认是否仍在原处，已保留。请检查磁盘、云端下载和权限后刷新。';
       else if (!tracks.length) state.message = '这个文件夹中没有找到支持识别的音频文件。';
       emit(true);
+      if (replacing) {
+        const identity = state.sourceIdentity;
+        void savedHandle({handle, sourceIdentity: identity}, true,
+          () => !disposed && state.sourceIdentity === identity && root === handle).catch(() => {
+          if (disposed || generation !== scanGeneration || state.sourceIdentity !== identity) return;
+          state.message = '浏览器无法保存文件夹授权，下次打开可能需要重新选择。'; emit();
+        });
+      }
     }
 
     function acceptFiles(files) {
@@ -215,7 +264,7 @@
         while (next.has(id)) id = `${path} [${++duplicate}]`;
         next.set(id, {file});
         tracks.push({id, title: file.name.replace(/\.[^.]+$/, ''), artist: '', album: '',
-          relativePath: path, status: 'unknown', durationMs: 0});
+          relativePath: path, status: 'unloaded', durationMs: 0});
       }
       if (!tracks.length) {
         state.message = '没有找到可识别的音频文件。请选择 MP3、M4A 等音乐文件；已保留原资料库。';
@@ -230,10 +279,11 @@
       state.currentTrackId = null;
       state.tracks = tracks.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
       state.message = filesOnly
-        ? '已选择音乐文件。重新打开网页后需再次选择，音频不会上传。iCloud 文件可能先由系统下载。'
-        : '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。音频不会上传。';
+        ? '已选择音乐文件。重新打开网页后需再次选择，音频不会上传。浏览器无法查询 iCloud 下载状态，系统可能在选择时先下载文件，无法保证等到播放才下载。'
+        : '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。浏览器无法查询 iCloud 下载状态，系统可能在选择时先下载文件，无法保证等到播放才下载。音频不会上传。';
       // 持久化已清空的句柄时，不得因等待 IndexedDB 而卡住界面。
-      void savedHandle(null, true).catch(() => {});
+      const generation = scanGeneration;
+      void savedHandle(null, true, () => !disposed && generation === scanGeneration && !root).catch(() => {});
       emit(true);
     }
     function fallbackPick() {
@@ -295,6 +345,24 @@
       finally { permissionBusy = false; }
     }
 
+    // 浏览器不能中止提供器的 getFile，但必须能结束本次等待并丢弃迟到结果。
+    function prepare(work) {
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (callback, value) => {
+          if (settled) return;
+          settled = true; clearTimeout(timer);
+          if (cancelPreparation === cancel) cancelPreparation = null;
+          callback(value);
+        };
+        const cancel = () => finish(reject, {name: 'AbortError'});
+        const timer = setTimeout(() => finish(reject, {name: 'TimeoutError'}), 120000);
+        cancelPreparation = cancel;
+        try { Promise.resolve(work()).then(value => finish(resolve, value), error => finish(reject, error)); }
+        catch (error) { finish(reject, error); }
+      });
+    }
+
     async function play(id, remember = true, continueCycle = false) {
       if (!id || disposed) return;
       const entry = entries.get(id);
@@ -305,13 +373,12 @@
       shuffleVisited.add(id);
       const oldId = state.currentTrackId;
       clearAudio(); const generation = playGeneration;
-      state.currentTrackId = id; state.isLoading = true; state.message = null; emit();
+      state.currentTrackId = id; status(id, 'loading'); state.isLoading = true; state.message = null; emit();
       if (remember && oldId && oldId !== id) history.push(oldId);
       try {
-        const file = entry.file || await entry.handle.getFile();
+        const file = await prepare(() => entry.file || entry.handle.getFile());
         if (disposed || generation !== playGeneration) return;
         url = URL.createObjectURL(file); audio.src = url; audio.volume = state.volume;
-        status(id, 'ready');
         // 标签解析独立于播放，且旧歌曲、旧资料库的异步结果不可回写。
         const sourceIdentity = state.sourceIdentity;
         const current = () => !disposed && generation === playGeneration &&
@@ -328,13 +395,21 @@
             emit(true);
           }).catch(() => {});
         }
-        await audio.play();
+        await prepare(() => audio.play());
         if (disposed || generation !== playGeneration) return;
         state.isLoading = false; state.isPlaying = !audio.paused; emit(true);
       } catch (e) {
         if (disposed || generation !== playGeneration) return;
+        if (e?.name === 'TimeoutError') {
+          clearAudio(); status(id, 'unloaded');
+          state.message = '读取或准备播放超时，请检查网络和文件权限后重试。浏览器无法保证停止系统的 iCloud 下载。';
+          emit(true); return;
+        }
         state.isLoading = false; state.isPlaying = false;
-        if (e?.name === 'NotAllowedError' && url) state.message = '浏览器阻止了自动播放，请再次点击播放。';
+        if (e?.name === 'NotAllowedError' && url) {
+          if (state.tracks.find(t => t.id === id)?.status === 'loading') status(id, 'unloaded');
+          state.message = '浏览器阻止了自动播放，请再次点击播放。';
+        }
         else {
           const unsupported = e?.name === 'NotSupportedError';
           status(id, unsupported ? 'unsupported' : 'unknown');
@@ -375,7 +450,7 @@
           if (cached) {
             state.folderName = typeof cached.folderName === 'string' ? cached.folderName : null;
             if (typeof cached.sourceIdentity === 'string' && cached.sourceIdentity.length < 200) state.sourceIdentity = cached.sourceIdentity;
-            state.tracks = Array.isArray(cached.tracks) ? cached.tracks.filter(t => typeof t.id === 'string' && typeof t.relativePath === 'string').map(t => ({...t, status: 'unknown'})) : [];
+            state.tracks = Array.isArray(cached.tracks) ? cached.tracks.filter(t => typeof t.id === 'string' && typeof t.relativePath === 'string').map(t => ({...t, status: 'accessRequired'})) : [];
             state.shuffle = cached.shuffle === true;
             state.repeatMode = ['off', 'all', 'one'].includes(cached.repeatMode) ? cached.repeatMode : 'off';
             state.volume = Number.isFinite(cached.volume) ? Math.max(0, Math.min(1, cached.volume)) : 1;
@@ -397,7 +472,9 @@
             if (disposed || generation !== scanGeneration || picking) return;
             if (handle && typeof handle.queryPermission === 'function') {
               root = handle;
-              if (typeof saved?.sourceIdentity === 'string') state.sourceIdentity = saved.sourceIdentity;
+              if (typeof saved?.sourceIdentity === 'string' && state.sourceIdentity !== saved.sourceIdentity) {
+                state.sourceIdentity = saved.sourceIdentity; state.tracks = [];
+              }
               const permission = await handle.queryPermission({mode: 'read'});
               if (disposed || generation !== scanGeneration || picking) return;
               if (permission === 'granted') await scan(handle, false);
@@ -421,14 +498,26 @@
           case 'refresh': return refresh();
           case 'play': return play(args.id);
           case 'togglePlayback':
+            if (state.isLoading) { clearAudio(); emit(); return; }
             if (!audio.paused) { audio.pause(); state.isLoading = false; emit(); return; }
             if (url) {
-              try { await audio.play(); } catch (_) { state.message = '播放未能开始，请再点击播放或检查文件是否可用。'; emit(); }
+              const generation = playGeneration;
+              state.isLoading = true; emit();
+              try {
+                await prepare(() => audio.play());
+                if (disposed || generation !== playGeneration) return;
+                state.isLoading = false; state.isPlaying = !audio.paused; emit();
+              } catch (error) {
+                if (disposed || generation !== playGeneration) return;
+                if (error?.name === 'TimeoutError') clearAudio();
+                state.isLoading = false;
+                state.message = '播放未能开始，请再点击播放或检查文件是否可用。'; emit();
+              }
               return;
             }
             return play(state.currentTrackId || state.tracks[0]?.id);
-          case 'pause': ++playGeneration; audio.pause(); state.isLoading = false; emit(); return;
-          case 'cancelLoading': clearAudio(); emit(); return;
+          case 'pause': if (state.isLoading) clearAudio(); else { ++playGeneration; audio.pause(); } state.isLoading = false; emit(); return;
+          case 'cancelLoading': clearAudio(); state.message = '已取消本次播放等待；浏览器无法保证取消系统正在进行的 iCloud 下载。'; emit(); return;
           case 'next': return advance(1);
           case 'previous': return advance(-1);
           case 'seek':

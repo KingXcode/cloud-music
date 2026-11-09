@@ -2,7 +2,17 @@ import 'dart:typed_data';
 
 import 'track_identity.dart';
 
-enum TrackAvailability { ready, cloud, offline, missing, unsupported, unknown }
+enum TrackAvailability {
+  ready,
+  cloud,
+  unloaded,
+  accessRequired,
+  loading,
+  offline,
+  missing,
+  unsupported,
+  unknown,
+}
 
 enum RepeatMode { off, all, one }
 

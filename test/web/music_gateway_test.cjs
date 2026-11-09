@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('web/music_gateway.js', 'utf8');
 const tick = () => new Promise(r => setTimeout(r, 20));
-function harness({handle = null, cached = null, picker, browser = {}, directoryInput = true, clickError, blockedDatabase = false, metadataReader} = {}) {
+function harness({handle = null, cached = null, picker, browser = {}, directoryInput = true, clickError, blockedDatabase = false, metadataReader, preparationTimeout} = {}) {
   const events = [], urls = new Set(), revoked = [];
   let picked = 0, audio, input;
   const document = {body: {append() {}}, createElement() {
@@ -31,7 +31,7 @@ function harness({handle = null, cached = null, picker, browser = {}, directoryI
     function req(value) {const r = {}; setTimeout(() => { r.result = value; r.onsuccess?.(); tx.oncomplete?.(); }, 0); return r;}
     return tx;
   }};
-  const context = {document, console, setTimeout, clearTimeout, Audio: FakeAudio, URL: {
+  const context = {document, console, setTimeout: (callback, delay) => setTimeout(callback, delay === 120000 && preparationTimeout != null ? preparationTimeout : delay), clearTimeout, Audio: FakeAudio, URL: {
     createObjectURL() { const u = 'blob:' + Math.random(); urls.add(u); return u; },
     revokeObjectURL(u) {urls.delete(u); revoked.push(u);}
   }, localStorage: {getItem: () => cached && JSON.stringify(cached), setItem: (_, v) => {cached = JSON.parse(v);}},
@@ -58,7 +58,7 @@ test('restores granted handle without picker/requestPermission and does not read
   await h.gateway.initialize(); await tick();
   assert.equal(root.queries, 1); assert.equal(root.requests, 0);
   assert.equal(reads, 0); assert.equal(h.events.at(-1).tracks.length, 1);
-  assert.equal(h.events.at(-1).tracks[0].status, 'unknown');
+  assert.equal(h.events.at(-1).tracks[0].status, 'unloaded');
   await h.gateway.command('play', {id:'One.mp3'});
   assert.equal(reads, 1); assert.equal(h.urls.size, 1);
   h.gateway.dispose(); assert.equal(h.urls.size, 0);
@@ -114,21 +114,21 @@ test('empty successful listing is not proof of deletion or a healthy mounted sou
   const h = harness({handle:directory({}),cached:{tracks:[{id:'old.mp3',relativePath:'old.mp3'}]}});
   await h.gateway.initialize(); await tick(); await h.gateway.command('refresh');
   assert.equal(h.events.at(-1).tracks.length,1);
-  assert.equal(h.events.at(-1).tracks[0].status,'unknown'); h.gateway.dispose();
+  assert.equal(h.events.at(-1).tracks[0].status,'accessRequired'); h.gateway.dispose();
 });
 test('omitted entry still resolvable by direct lookup is preserved', async () => {
   const root = directory({'witness.mp3':file('witness.mp3')});
   root.getFileHandle = async name => file(name);
   const h = harness({handle:root,cached:{tracks:[{id:'old.mp3',relativePath:'old.mp3'}]}});
   await h.gateway.initialize(); await tick(); await h.gateway.command('refresh');
-  assert.equal(h.events.at(-1).tracks.find(t=>t.id==='old.mp3').status,'unknown'); h.gateway.dispose();
+  assert.equal(h.events.at(-1).tracks.find(t=>t.id==='old.mp3').status,'accessRequired'); h.gateway.dispose();
 });
 test('apparently present siblings with unavailable provider cannot confirm deletion', async () => {
   const root = directory({'witness.mp3':file('witness.mp3')});
   root.getFileHandle = async () => {throw {name:'NotFoundError'};};
   const h = harness({handle:root,cached:{tracks:[{id:'old.mp3',relativePath:'old.mp3'}]}});
   await h.gateway.initialize(); await tick(); await h.gateway.command('refresh');
-  assert.equal(h.events.at(-1).tracks.find(t=>t.id==='old.mp3').status,'unknown'); h.gateway.dispose();
+  assert.equal(h.events.at(-1).tracks.find(t=>t.id==='old.mp3').status,'accessRequired'); h.gateway.dispose();
 });
 test('playback NotFound alone never labels track missing', async () => {
   const h = harness({handle:directory({'cloud.mp3':{kind:'file',async getFile(){throw {name:'NotFoundError'};}}})});
@@ -292,7 +292,7 @@ test('selected files publish immediately even when IndexedDB never responds; dup
 test('iPhone reload explains file reselection and refresh opens another file picker', async () => {
   const h = harness({browser: iphone, cached: {folderName: '已选音乐文件', tracks: [{id: 'old.mp3', relativePath: 'old.mp3'}]}});
   const initial = await h.gateway.initialize();
-  assert.equal(initial.tracks[0].status, 'unknown');
+  assert.equal(initial.tracks[0].status, 'accessRequired');
   assert.match(initial.message, /重新选择音乐文件/);
   await h.gateway.command('play', {id: 'old.mp3'});
   assert.match(h.events.at(-1).message, /重新选择音乐文件/);
@@ -360,4 +360,194 @@ test('metadata parser failure never blocks original playback', async () => {
   const h = harness({handle:directory({'a.mp3':file('a.mp3')}), metadataReader:() => {throw new Error('bad tag');}});
   await h.gateway.initialize(); await tick(); await h.gateway.command('play', {id:'a.mp3'}); await tick();
   assert.equal(h.audio.paused, false); assert.equal(h.events.at(-1).tracks[0].title, 'a'); h.gateway.dispose();
+});
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((a, b) => {resolve = a; reject = b;});
+  return {promise, resolve, reject};
+}
+test('directory publishes first track before traversal completes and reads only the played file', async () => {
+  const gate = deferred(); let reads = 0;
+  const root = directory({});
+  root.entries = async function* () {
+    yield ['first.mp3', {kind: 'file', async getFile() {reads++; return {};}}];
+    await gate.promise;
+    yield ['second.mp3', {kind: 'file', async getFile() {throw Error('not selected');}}];
+  };
+  const h = harness({picker: () => root, blockedDatabase: true});
+  await h.gateway.initialize();
+  const picking = h.gateway.command('pickFolder'); await tick();
+  assert.equal(h.events.at(-1).isScanning, true);
+  assert.equal(h.events.at(-1).tracks[0].status, 'unloaded');
+  assert.equal(reads, 0);
+  await h.gateway.command('play', {id: 'first.mp3'});
+  assert.equal(reads, 1);
+  const src = h.audio.src;
+  gate.resolve();
+  assert.equal(await Promise.race([picking.then(() => 'done'), tick().then(() => 'blocked')]), 'done');
+  assert.equal(h.events.at(-1).isScanning, false);
+  assert.equal(h.events.at(-1).tracks.length, 2);
+  assert.equal(h.events.at(-1).tracks[0].status, 'ready');
+  assert.equal(h.audio.src, src);
+  assert.equal(h.cached.tracks.length, 2);
+  h.gateway.dispose();
+});
+test('failed replacement root rolls back metadata, identity and handles without stale playback', async () => {
+  const gate = deferred(), oldRead = deferred(), newRead = deferred();
+  const original = directory({'same.mp3': {kind:'file', getFile: () => oldRead.promise}});
+  const replacement = directory({});
+  replacement.entries = async function* () {
+    yield ['same.mp3', {kind:'file', getFile: () => newRead.promise}];
+    await gate.promise; throw Error('provider disconnected');
+  };
+  const h = harness({handle:original, cached:{sourceIdentity:'old-source'}, picker:() => replacement});
+  await h.gateway.initialize(); await tick();
+  const oldPlay = h.gateway.command('play', {id:'same.mp3'});
+  const picking = h.gateway.command('pickFolder'); await tick();
+  assert.notEqual(h.events.at(-1).sourceIdentity, 'old-source');
+  assert.equal(h.events.at(-1).currentTrackId, null);
+  const newPlay = h.gateway.command('play', {id:'same.mp3'});
+  gate.resolve(); await picking;
+  assert.equal(h.events.at(-1).sourceIdentity, 'old-source');
+  assert.equal(h.cached.sourceIdentity, 'old-source');
+  oldRead.resolve({}); newRead.resolve({}); await Promise.all([oldPlay, newPlay]);
+  assert.equal(h.urls.size, 0);
+  await h.gateway.command('play', {id:'same.mp3'});
+  assert.equal(h.events.at(-1).isPlaying, true);
+  h.gateway.dispose();
+});
+test('failed replacement before first entry preserves old library and playback', async () => {
+  const broken = directory({}); broken.entries = async function* () {throw Error('offline');};
+  const h = harness({handle:directory({'old.mp3':file('old.mp3')}), picker:() => broken});
+  await h.gateway.initialize(); await tick(); await h.gateway.command('play', {id:'old.mp3'});
+  const identity = h.events.at(-1).sourceIdentity, src = h.audio.src;
+  await h.gateway.command('pickFolder');
+  assert.equal(h.events.at(-1).sourceIdentity, identity);
+  assert.equal(h.events.at(-1).tracks[0].id, 'old.mp3');
+  assert.equal(h.audio.src, src);
+  assert.equal(h.events.at(-1).isPlaying, true);
+  h.gateway.dispose();
+});
+test('replacement listing does not merge same-named tracks or old tags from another source', async () => {
+  const gate = deferred(), tags = deferred();
+  const next = directory({});
+  next.entries = async function* () {yield ['same.mp3', file('same.mp3')]; await gate.promise;};
+  const h = harness({handle:directory({'same.mp3':file('same.mp3'), 'old.mp3':file('old.mp3')}),
+    metadataReader: () => tags.promise, picker: () => next});
+  await h.gateway.initialize(); await tick(); await h.gateway.command('play', {id:'same.mp3'});
+  const oldIdentity = h.events.at(-1).sourceIdentity;
+  const picking = h.gateway.command('pickFolder'); await tick();
+  assert.equal(h.urls.size, 0);
+  assert.equal(h.events.at(-1).tracks.length, 1);
+  assert.notEqual(h.events.at(-1).sourceIdentity, oldIdentity);
+  tags.resolve({title:'stale title'}); await tick();
+  assert.equal(h.events.at(-1).tracks[0].title, 'same');
+  gate.resolve(); await picking; h.gateway.dispose();
+});
+test('getFile success alone does not mark track ready; canplay does', async () => {
+  const h = harness({handle:directory({'a.mp3':file('a.mp3')})});
+  await h.gateway.initialize(); await tick();
+  const playResult = deferred();
+  h.audio.play = () => playResult.promise;
+  const pending = h.gateway.command('play', {id:'a.mp3'}); await tick();
+  assert.equal(h.events.at(-1).tracks[0].status, 'loading');
+  assert.equal(h.events.at(-1).isLoading, true);
+  h.audio.listeners.canplay();
+  assert.equal(h.events.at(-1).tracks[0].status, 'ready');
+  playResult.resolve(); await pending; h.gateway.dispose();
+});
+test('disposal during traversal ignores future entries and prevents persistence', async () => {
+  const gate = deferred();
+  const root = directory({});
+  root.entries = async function* () {yield ['a.mp3', file('a.mp3')]; await gate.promise; yield ['b.mp3', file('b.mp3')];};
+  const h = harness({picker: () => root}); await h.gateway.initialize();
+  const picking = h.gateway.command('pickFolder'); await tick();
+  const count = h.events.length;
+  h.gateway.dispose(); gate.resolve(); await picking;
+  assert.equal(h.events.length, count);
+  assert.equal(h.cached, null);
+  assert.equal(h.urls.size, 0);
+});
+test('large directory publishes intermediate batches without opening content', async () => {
+  const files = Object.fromEntries(Array.from({length:100}, (_, i) => [`${i}.mp3`, {kind:'file', getFile() {throw Error('scan read bytes');}}]));
+  const h = harness({picker: () => directory(files)});
+  await h.gateway.initialize(); await h.gateway.command('pickFolder');
+  assert.ok(h.events.some(s => s.isScanning && s.tracks.length === 33));
+  assert.equal(h.events.at(-1).tracks.length, 100);
+  assert.ok(h.events.at(-1).tracks.every(t => t.status === 'unloaded'));
+  h.gateway.dispose();
+});
+test('cancel loading restores unloaded and explains that provider download cannot be guaranteed cancelled', async () => {
+  const read = deferred();
+  const h = harness({handle:directory({'cloud.mp3':{kind:'file', getFile: () => read.promise}})});
+  await h.gateway.initialize(); await tick();
+  const pending = h.gateway.command('play', {id:'cloud.mp3'});
+  await h.gateway.command('cancelLoading');
+  assert.equal(h.events.at(-1).tracks[0].status, 'unloaded');
+  assert.match(h.events.at(-1).message, /无法保证取消系统/);
+  read.resolve({}); await pending;
+  assert.equal(h.urls.size, 0); h.gateway.dispose();
+});
+test('cancel releases the command even when the provider never completes getFile', async () => {
+  const h = harness({handle:directory({'a.mp3':{kind:'file', getFile: () => new Promise(() => {})}})});
+  await h.gateway.initialize(); await tick();
+  const pending = h.gateway.command('play', {id:'a.mp3'});
+  await h.gateway.command('cancelLoading');
+  assert.equal(await Promise.race([pending.then(() => 'done'), tick().then(() => 'blocked')]), 'done');
+  h.gateway.dispose();
+});
+test('stalled provider reads and stalled audio play time out without leaving stale playback', async () => {
+  for (const phase of ['read', 'play']) {
+    const work = deferred();
+    const h = harness({preparationTimeout:5, handle:directory({'a.mp3':phase === 'read'
+      ? {kind:'file', getFile: () => work.promise} : file('a.mp3')})});
+    await h.gateway.initialize(); await tick();
+    if (phase === 'play') h.audio.play = () => work.promise;
+    await h.gateway.command('play', {id:'a.mp3'});
+    assert.equal(h.events.at(-1).isLoading, false);
+    assert.equal(h.events.at(-1).tracks[0].status, 'unloaded');
+    assert.match(h.events.at(-1).message, /超时/);
+    assert.equal(h.urls.size, 0);
+    work.resolve({}); await tick();
+    assert.equal(h.urls.size, 0); assert.equal(h.events.at(-1).isPlaying, false);
+    h.gateway.dispose();
+  }
+});
+test('dispose releases stalled play promise and clears its preparation timer', async () => {
+  const h = harness({handle:directory({'a.mp3':file('a.mp3')})});
+  await h.gateway.initialize(); await tick();
+  h.audio.play = () => new Promise(() => {});
+  const pending = h.gateway.command('play', {id:'a.mp3'}); await tick();
+  h.gateway.dispose();
+  assert.equal(await Promise.race([pending.then(() => 'done'), tick().then(() => 'blocked')]), 'done');
+  assert.equal(h.urls.size, 0);
+});
+test('repeated toggle cancels a pending resume rather than leaving overlapping preparation waits', async () => {
+  const h = harness({handle:directory({'a.mp3':file('a.mp3')})});
+  await h.gateway.initialize(); await tick(); await h.gateway.command('play', {id:'a.mp3'});
+  await h.gateway.command('pause');
+  h.audio.play = () => new Promise(() => {});
+  const pending = h.gateway.command('togglePlayback');
+  assert.equal(h.events.at(-1).isLoading, true);
+  await h.gateway.command('togglePlayback');
+  assert.equal(await Promise.race([pending.then(() => 'done'), tick().then(() => 'blocked')]), 'done');
+  assert.equal(h.events.at(-1).isLoading, false); assert.equal(h.urls.size, 0);
+  h.gateway.dispose();
+});
+test('confirmed source replacement cancels old read before source comparison or listing returns', async () => {
+  const oldRead = deferred(), comparison = deferred();
+  const oldRoot = directory({'old.mp3':{kind:'file', getFile: () => oldRead.promise}});
+  const newRoot = directory({'new.mp3':file('new.mp3')});
+  newRoot.isSameEntry = () => comparison.promise;
+  const h = harness({handle:oldRoot, picker: () => newRoot});
+  await h.gateway.initialize(); await tick();
+  const playing = h.gateway.command('play', {id:'old.mp3'});
+  const picking = h.gateway.command('pickFolder'); await tick();
+  oldRead.resolve({}); await playing;
+  assert.equal(h.urls.size, 0);
+  assert.equal(h.events.at(-1).isPlaying, false);
+  comparison.resolve(false); await picking;
+  assert.equal(h.events.at(-1).tracks[0].id, 'new.mp3');
+  h.gateway.dispose();
 });

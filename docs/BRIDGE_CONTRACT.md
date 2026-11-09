@@ -9,7 +9,7 @@
 
 - `folderName`：字符串或 null；`sourceKind`：`apple`、`android` 或 `web`
 - `selectionMode`：可选，值为 `folder`（默认）或 `files`；Web 适配器在 iPhone/iPad 及不支持目录选择的浏览器中使用 `files`
-- `tracks`：映射数组，每项包含 `id`：稳定的字符串标识；`title`：字符串；`artist`：字符串（允许为空）；`album`：字符串（允许为空）；`relativePath`：用于显示的字符串；`status`：`ready`/`cloud`/`offline`/`missing`/`unsupported`/`unknown`；`durationMs`：非负整数（未知时为 0）
+- `tracks`：映射数组，每项包含 `id`：稳定的字符串标识；`title`：字符串；`artist`：字符串（允许为空）；`album`：字符串（允许为空）；`relativePath`：用于显示的字符串；`status`：`ready`/`cloud`/`unloaded`/`accessRequired`/`loading`/`offline`/`missing`/`unsupported`/`unknown`；`durationMs`：非负整数（未知时为 0）
 - `currentTrackId`：字符串或 null
 - `isPlaying`、`isLoading`、`isScanning`、`shuffle`：布尔值
 - `positionMs`、`durationMs`：非负整数
@@ -39,3 +39,7 @@ Android 目录树 URI 或浏览器根目录 UUID。该标识仅用于隔离本�
 这些方法返回各自的结果，不返回音乐库快照。错误码包括
 `lyrics_error`、`invalid_arguments`、`picker_busy` 或 `no_activity`。
 需用户明确同意的歌词服务流程及限制见[歌词文档](LYRICS.md)。
+
+## 渐进索引与浏览器状态（0.5.1）
+
+扫描可发布 `isScanning=true` 的局部列表，已发现条目可播放。`unloaded` 表示有文件引用但尚未验证可读，不等于云端未下载；`accessRequired` 表示只有缓存元数据，需要恢复授权或重新选择；`loading` 表示当前播放准备。Web 只有媒体可播放事件后才标记 `ready`，不使用 `cloud` 猜测 iCloud 状态。Apple 缺少资源属性时使用 `unknown`。

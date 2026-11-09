@@ -87,6 +87,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private let io = DispatchQueue(label: "cloud_music.index", qos: .utility, attributes: .concurrent)
     private let playbackIO = DispatchQueue(label: "cloud_music.prepare", qos: .userInitiated, attributes: .concurrent)
     private let persistence = DispatchQueue(label: "cloud_music.persistence", qos: .utility)
+    private var playbackStatusRevision = 0
+    private var trackStatusRevisions: [String: Int] = [:]
     private var loaded = false
     private let networkMonitor = NWPathMonitor()
     private var networkAvailable = false
@@ -210,6 +212,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 if library.bookmark != nil, library.sourceIdentity == nil {
                     library.sourceIdentity = UUID().uuidString; save()
                 }
+                library.tracks = library.tracks.map { var track = $0; track.status = "unknown"; return track }
                 player.volume = library.volume
                 scan(removeMissing: false, discover: false)
             }
@@ -380,14 +383,13 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
             let selectedScope = Scope(url)
             do {
                 let data = try Self.bookmark(url)
-                let volumeUUID = try Self.metadata(url, token: Cancellation()) { try $0.resourceValues(forKeys: Self.keys).volumeUUIDString }
                 DispatchQueue.main.async {
                     guard let self = self, self.generation == request else { return }
                     withExtendedLifetime(selectedScope) {
-                        self.library.bookmark = data; self.library.folderName = url.lastPathComponent; self.library.volumeUUID = volumeUUID
+                        self.library.bookmark = data; self.library.folderName = url.lastPathComponent; self.library.volumeUUID = nil
                         // 用户主动重新选择时，即使是同一文件夹，也创建新来源。
                         self.library.sourceIdentity = UUID().uuidString
-                        self.library.tracks = []; self.currentID = nil; self.history = []; self.shuffleBag = []; self.shuffleCycleStarted = false
+                        self.library.tracks = []; self.trackStatusRevisions = [:]; self.currentID = nil; self.history = []; self.shuffleBag = []; self.shuffleCycleStarted = false
                         self.save(); self.scan(removeMissing: false, discover: true)
                     }
                 }
@@ -446,27 +448,39 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         return available
     }
     private static func status(_ value: URLResourceValues) -> String {
-        if value.ubiquitousItemDownloadingError != nil { return "offline" }
-        if value.isUbiquitousItem == true && value.ubiquitousItemDownloadingStatus != .current && value.ubiquitousItemDownloadingStatus != .downloaded { return "cloud" }
-        return "ready"
+        CloudFileMetadata.status(value)
     }
     private static func missingError(_ error: Error) -> Bool {
         let e = error as NSError
         // 不得将文件提供器或网络错误解包后重新解释为文件已删除。
         return e.domain == NSCocoaErrorDomain && (e.code == NSFileReadNoSuchFileError || e.code == NSFileNoSuchFileError)
     }
+    private func mergeScannedTracks(_ candidates: [Track], preserveOther: Bool, since revision: Int) {
+        let live = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var merged = preserveOther ? live : [:]
+        for var candidate in candidates {
+            if let existing = live[candidate.id] {
+                candidate.title = existing.title; candidate.artist = existing.artist
+                candidate.album = existing.album; candidate.durationMs = existing.durationMs
+                // 列表扫描可能早于当前播放完成，不能把新鲜的播放状态覆盖为旧状态。
+                if (candidate.id == currentID && playToken != nil) || (trackStatusRevisions[candidate.id] ?? 0) > revision { candidate.status = existing.status }
+            }
+            merged[candidate.id] = candidate
+        }
+        library.tracks = merged.values.sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+    }
     private func scan(removeMissing: Bool, discover: Bool) {
         guard let bookmark = library.bookmark else { return }
         scanToken?.cancel()
         let token = Cancellation(); scanToken = token
-        let request = generation; let previous = library.tracks
+        let request = generation; let previous = library.tracks; let statusRevision = playbackStatusRevision
         let online = networkAvailable
         let expectedVolume = library.volumeUUID
         scanning = true; message = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 180) { [weak self] in
             guard let self = self, self.generation == request, !token.cancelled, self.scanning else { return }
             token.cancel(); self.scanning = false
-            self.message = "文件服务响应超时，已保留曲库。请检查连接后重试。"; self.emit()
+            self.message = "文件服务响应超时，已保留已发现和原有的歌曲。请检查连接后刷新。"; self.save(); self.emit()
         }
         io.async { [weak self] in
             do {
@@ -476,7 +490,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 var covered: [String: Set<String>] = [:]
                 var uncertain = Set<String>()
                 var issues = false
-                let rootValues = try Self.metadata(root, token: token) { try $0.resourceValues(forKeys: Self.keys) }
+                let rootValues = try Self.metadata(root, token: token) { try CloudFileMetadata.promisedValues($0, keys: Self.keys) }
                 guard rootValues.isDirectory == true, rootValues.isSymbolicLink != true else { throw SourceError.unavailable }
                 if let expectedVolume = expectedVolume, rootValues.volumeUUIDString != expectedVolume { throw SourceError.unavailable }
                 if rootValues.volumeUUIDString == nil || expectedVolume == nil || rootValues.volumeIsLocal != true || rootValues.fileResourceIdentifier == nil || !online {
@@ -486,13 +500,25 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     uncertain.insert(""); issues = true
                 }
                 let old = Dictionary(previous.map { ($0.relativePath, $0) }, uniquingKeysWith: { a, _ in a })
+                var lastPublished = Date.distantPast
+                func publishProgress(force: Bool = false) {
+                    guard !token.cancelled, !found.isEmpty,
+                          force || Date().timeIntervalSince(lastPublished) >= 0.15 else { return }
+                    lastPublished = Date()
+                    let batch = Array(found.values)
+                    DispatchQueue.main.async {
+                        guard let self = self, self.generation == request, !token.cancelled else { return }
+                        self.mergeScannedTracks(batch, preserveOther: true, since: statusRevision)
+                        self.emit()
+                    }
+                }
                 func walk(_ directory: URL, _ relative: String) throws {
                     if token.cancelled { throw SourceError.cancelled }
                     do {
                         let listing: ([URL], Bool) = try Self.metadata(directory, token: token) { target in
-                            let values = try target.resourceValues(forKeys: Self.keys)
+                            let values = try CloudFileMetadata.promisedValues(target, keys: Self.keys)
                             guard values.isDirectory == true, values.isSymbolicLink != true else { throw SourceError.unavailable }
-                            let children = try FileManager.default.contentsOfDirectory(at: target, includingPropertiesForKeys: Array(Self.keys), options: [])
+                            let children = try FileManager.default.contentsOfDirectory(at: target, includingPropertiesForKeys: nil, options: [])
                             return (children, Self.status(values) == "ready")
                         }
                         // 文件提供器或存储卷视图意外为空，
@@ -503,6 +529,17 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         }
                         if listing.1 { covered[relative] = Set(listing.0.map { $0.lastPathComponent }) }
                         else { uncertain.insert(relative); issues = true }
+                        // 先按名称展示同层候选，随后读取各项的 promised 元数据。
+                        // 某个文件提供器很慢时，不必等整棵目录完成才看到歌曲。
+                        for child in listing.0 {
+                            guard let audio = CloudFileMetadata.audioName(child.lastPathComponent) else { continue }
+                            let path = relative.isEmpty ? audio.name : relative + "/" + audio.name
+                            guard discover || old[path] != nil else { continue }
+                            var track = old[path] ?? Track(id: Data(path.utf8).base64EncodedString(), title: (audio.name as NSString).deletingPathExtension, relativePath: path)
+                            track.status = audio.placeholder ? "cloud" : "unknown"
+                            found[path] = track
+                        }
+                        publishProgress(force: true)
                         for child in listing.0 {
                             if token.cancelled { throw SourceError.cancelled }
                             let path = relative.isEmpty ? child.lastPathComponent : relative + "/" + child.lastPathComponent
@@ -512,24 +549,25 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                                 uncertain.insert(relative); issues = true
                                 let name = String(child.deletingPathExtension().lastPathComponent.dropFirst())
                                 let logicalPath = relative.isEmpty ? name : relative + "/" + name
-                                let ext = (name as NSString).pathExtension.lowercased()
-                                if ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "alac", "caf", "ogg", "opus", "wma"].contains(ext), discover || old[logicalPath] != nil {
+                                if listing.0.contains(where: { $0.lastPathComponent == name }) { continue }
+                                if CloudFileMetadata.audioName(child.lastPathComponent) != nil, discover || old[logicalPath] != nil {
                                     var t = old[logicalPath] ?? Track(id: Data(logicalPath.utf8).base64EncodedString(), title: (name as NSString).deletingPathExtension, relativePath: logicalPath)
                                     t.status = "cloud"; found[logicalPath] = t
                                 }
                                 continue
                             }
                             do {
-                                let value = try Self.metadata(child, token: token) { try $0.resourceValues(forKeys: Self.keys) }
-                                if value.isSymbolicLink == true { continue }
-                                if value.isDirectory == true { try walk(child, path); continue }
+                                let value = try Self.metadata(child, token: token) { try CloudFileMetadata.promisedValues($0, keys: Self.keys) }
+                                if value.isSymbolicLink == true { found.removeValue(forKey: path); continue }
+                                if value.isDirectory == true { found.removeValue(forKey: path); try walk(child, path); continue }
                                 let ext = child.pathExtension.lowercased()
-                                let candidate = value.contentType?.conforms(to: .audio) == true || ["mp3", "m4a", "aac", "wav", "aif", "aiff", "flac", "alac", "caf", "ogg", "opus", "wma"].contains(ext)
+                                let candidate = value.contentType?.conforms(to: .audio) == true || CloudFileMetadata.audioExtensions.contains(ext)
                                 guard candidate, discover || old[path] != nil else { continue }
                                 var track = old[path] ?? Track(id: Data(path.utf8).base64EncodedString(), title: child.deletingPathExtension().lastPathComponent, relativePath: path)
                                 let availability = Self.status(value)
                                 if track.status != "unsupported" || availability != "ready" { track.status = availability }
                                 found[path] = track
+                                publishProgress()
                             } catch {
                                 issues = true; uncertain.insert(path)
                             }
@@ -552,7 +590,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         if let names = covered[parent], !names.contains(component) {
                             let absent = parent.isEmpty ? component : parent + "/" + component
                             do {
-                                _ = try Self.metadata(root.appendingPathComponent(absent), token: token) { try $0.resourceValues(forKeys: Self.keys) }
+                                _ = try Self.metadata(root.appendingPathComponent(absent), token: token) { try CloudFileMetadata.promisedValues($0, keys: Self.keys) }
                             } catch {
                                 if Self.missingError(error) {
                                     // 在父目录的协调读取仍有效时重新检查，
@@ -560,7 +598,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                                     do {
                                         let parentURL = parent.isEmpty ? root : root.appendingPathComponent(parent)
                                         confirmed = try Self.metadata(parentURL, token: token) { target in
-                                            let values = try target.resourceValues(forKeys: Self.keys)
+                                            let values = try CloudFileMetadata.promisedValues(target, keys: Self.keys)
                                             guard values.isDirectory == true, Self.status(values) == "ready",
                                                   values.volumeUUIDString == rootValues.volumeUUIDString else { return false }
                                             let namesNow = try FileManager.default.contentsOfDirectory(at: target, includingPropertiesForKeys: nil).map { $0.lastPathComponent }
@@ -574,12 +612,12 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         parent = parent.isEmpty ? component : parent + "/" + component
                     }
                     if confirmed { track.status = "missing" }
-                    else if track.status != "cloud" && track.status != "unsupported" { track.status = "offline" }
+                    else { track.status = "unknown" }
                     if !confirmed || !removeMissing { found[path] = track }
                 }
                 // 枚举及移除判定完成后，重新校验来源标识。
                 // 扫描期间若发生弹出、卸载或替换，则保留旧索引。
-                let finalRoot = try Self.metadata(root, token: token) { try $0.resourceValues(forKeys: Self.keys) }
+                let finalRoot = try Self.metadata(root, token: token) { try CloudFileMetadata.promisedValues($0, keys: Self.keys) }
                 guard finalRoot.isDirectory == true, finalRoot.volumeUUIDString == rootValues.volumeUUIDString else { throw SourceError.unavailable }
                 if let beforeID = rootValues.fileResourceIdentifier as? NSObject {
                     guard let afterID = finalRoot.fileResourceIdentifier as? NSObject, beforeID.isEqual(afterID) else { throw SourceError.unavailable }
@@ -594,17 +632,12 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         if online && !self.networkAvailable {
                             self.scanning = false; self.message = "网络状态已变化，已保留曲库，请联网后刷新。"; self.emit(); return
                         }
-                        // 保留扫描运行期间新获取的元数据。
-                        let live = Dictionary(self.library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
                         if self.library.volumeUUID == nil { self.library.volumeUUID = rootValues.volumeUUIDString }
-                        self.library.tracks = tracks.map { candidate in
-                            var t = candidate
-                            if let existing = live[t.id] { t.title = existing.title; t.artist = existing.artist; t.album = existing.album; t.durationMs = existing.durationMs }
-                            return t
-                        }
+                        self.mergeScannedTracks(tracks, preserveOther: false, since: statusRevision)
                         if let renewed = renewed { self.library.bookmark = renewed }
                         if let id = self.currentID, !tracks.contains(where: { $0.id == id }) { self.cancelPlayback(); self.currentID = nil }
-                        self.scanning = false; self.message = issues ? "部分文件暂时无法访问，已保留原有记录。" : nil
+                        self.scanning = false
+                        if !self.loading { self.message = issues ? "部分文件暂时无法确认，已保留记录；列表仅包含系统目前提供的目录信息。" : nil }
                         self.save(); self.emit()
                     }
                 }
@@ -612,8 +645,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 DispatchQueue.main.async {
                     guard let self = self, self.generation == request, !token.cancelled else { return }
                     self.scanning = false
-                    self.message = "文件夹暂时无法访问，已保留曲库。请检查网络、云盘或重新选择文件夹。"
-                    self.emit()
+                    self.message = "文件夹暂时无法访问，已保留已发现和原有的歌曲。请检查网络、云盘或重新选择文件夹。"
+                    self.save(); self.emit()
                 }
             }
         }
@@ -685,10 +718,10 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 var requested = false
                 while true {
                     if token.cancelled { throw SourceError.cancelled }
-                    let value = try Self.metadata(url, token: token) { try $0.resourceValues(forKeys: Self.keys) }
+                    let value = try Self.metadata(url, token: token) { try CloudFileMetadata.promisedValues($0, keys: Self.keys) }
                     if value.isSymbolicLink == true { throw SourceError.unavailable }
                     if let error = value.ubiquitousItemDownloadingError { throw error }
-                    if Self.status(value) != "cloud" { break }
+                    if value.isUbiquitousItem != true || value.ubiquitousItemDownloadingStatus == .current || value.ubiquitousItemDownloadingStatus == .downloaded { break }
                     if !requested {
                         // 显式发起下载与元数据协调相互独立，
                         // 此处只请求内容，不读取内容。
@@ -742,7 +775,10 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         guard let self = self, !token.cancelled, self.generation == request, self.player.currentItem === item else { return }
                         if item.status == .readyToPlay {
                             self.loading = false; self.message = nil
-                            if let i = self.library.tracks.firstIndex(where: { $0.id == id }) { self.library.tracks[i].status = "ready" }
+                            if let i = self.library.tracks.firstIndex(where: { $0.id == id }) {
+                                self.library.tracks[i].status = "ready"
+                                self.playbackStatusRevision += 1; self.trackStatusRevisions[id] = self.playbackStatusRevision
+                            }
                             if self.wantsPlayback { self.resume() }
                             self.save(); self.emit()
                         } else if item.status == .failed {
@@ -797,7 +833,10 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
             (e.domain == AVFoundationErrorDomain && [AVError.Code.fileFormatNotRecognized.rawValue, AVError.Code.fileFailedToParse.rawValue, AVError.Code.decoderNotFound.rawValue].contains(e.code))
         cancelPlayback()
         if let i = library.tracks.firstIndex(where: { $0.id == id }) {
-            if library.tracks[i].status != "missing" { library.tracks[i].status = unsupported ? "unsupported" : "offline" }
+            if library.tracks[i].status != "missing" {
+                library.tracks[i].status = unsupported ? "unsupported" : "offline"
+                playbackStatusRevision += 1; trackStatusRevisions[id] = playbackStatusRevision
+            }
         }
         message = unsupported ? "无法解码此音频，可能是格式不支持或文件损坏。原文件和记录均已保留。" : "歌曲暂时无法播放。请检查网络、iCloud 下载或文件夹授权后重试。"
         save(); emit()
