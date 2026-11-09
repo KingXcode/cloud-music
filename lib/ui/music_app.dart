@@ -9,6 +9,8 @@ import '../models.dart';
 import '../music_controller.dart';
 import 'lyrics_panel.dart';
 import 'music_sources_sheet.dart';
+import '../updates/update_controller.dart';
+import 'update_panel.dart';
 
 const _accent = Color(0xFFE83E59);
 const _ink = Color(0xFF202024);
@@ -18,8 +20,9 @@ const _line = Color(0xFFE8E8ED);
 const _playerMuted = Color(0xFFCDC3C5);
 
 class MusicApp extends StatelessWidget {
-  const MusicApp({super.key, required this.controller});
+  const MusicApp({super.key, required this.controller, this.updates});
   final MusicController controller;
+  final UpdateController? updates;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -70,15 +73,16 @@ class MusicApp extends StatelessWidget {
         ),
       ),
     ),
-    home: _LibraryPage(controller: controller),
+    home: _LibraryPage(controller: controller, updates: updates),
   );
 }
 
 enum _LibrarySection { songs, albums, artists, search }
 
 class _LibraryPage extends StatefulWidget {
-  const _LibraryPage({required this.controller});
+  const _LibraryPage({required this.controller, this.updates});
   final MusicController controller;
+  final UpdateController? updates;
   @override
   State<_LibraryPage> createState() => _LibraryPageState();
 }
@@ -168,6 +172,8 @@ class _LibraryPageState extends State<_LibraryPage> {
                   Expanded(
                     child: Column(
                       children: [
+                        if (widget.updates != null)
+                          UpdateBanner(controller: widget.updates!),
                         if (c.error != null)
                           _Notice(
                             text: c.error!,
@@ -288,6 +294,22 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           ),
                                         ),
                                       ),
+                                      if (widget.updates != null)
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: TextButton.icon(
+                                            key: const Key('app-updates'),
+                                            onPressed: () => showAppUpdates(
+                                              context,
+                                              widget.updates!,
+                                            ),
+                                            icon: const Icon(
+                                              Icons.system_update_alt,
+                                              size: 18,
+                                            ),
+                                            label: const Text('应用更新'),
+                                          ),
+                                        ),
                                       if (s.sourceKind == 'web' ||
                                           s.sourceKind == 'apple')
                                         Padding(

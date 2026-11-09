@@ -1,7 +1,7 @@
 name: cloud_music
 description: 私有音乐播放器，支持 Apple 设备、Android 文件夹及浏览器，直接播放原始音频文件。
 publish_to: none
-version: 0.5.1+7
+version: 0.6.0+8
 environment:
   sdk: '>=3.13.0 <4.0.0'
 dependencies:
@@ -11,6 +11,7 @@ dependencies:
     path: packages/folder_audio
   web: ^1.1.1
   http: ^1.6.0
+  crypto: ^3.0.7
   google_sign_in: ^7.2.0
   just_audio: ^0.10.6
   cupertino_icons: ^1.0.9

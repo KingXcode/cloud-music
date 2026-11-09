@@ -19,6 +19,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash scripts/ci_flutter.sh
       - run: flutter pub get
+      - name: Verify update manifest generator
+        run: python3 -m unittest discover -s test/scripts -v
       - run: flutter analyze && flutter test
       - name: Lyrics browser regression
         env:
@@ -29,7 +31,9 @@ jobs:
         env:
           REPOSITORY_NAME: ${{ github.event.repository.name }}
           GOOGLE_DRIVE_WEB_CLIENT_ID: ${{ vars.GOOGLE_DRIVE_WEB_CLIENT_ID }}
-        run: flutter build web --release --base-href "/$REPOSITORY_NAME/" --dart-define="GOOGLE_DRIVE_WEB_CLIENT_ID=$GOOGLE_DRIVE_WEB_CLIENT_ID"
+        run: flutter build web --release --no-web-resources-cdn --base-href "/$REPOSITORY_NAME/" --dart-define="GOOGLE_DRIVE_WEB_CLIENT_ID=$GOOGLE_DRIVE_WEB_CLIENT_ID"
+      - name: Prepare verified web update resources
+        run: node scripts/prepare_web_updates.cjs build/web
       - name: Verify Google Drive loads GIS only after user action
         run: node scripts/verify_drive_web_build.cjs build/web
       - uses: actions/upload-pages-artifact@v3

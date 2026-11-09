@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Never expose the whole cache, app data, music folders, or external storage. -->
+    <cache-path name="app_updates" path="app_updates/" />
+</paths>

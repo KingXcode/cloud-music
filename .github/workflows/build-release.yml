@@ -11,7 +11,7 @@ on:
       tag:
         description: Preview release tag
         required: true
-        default: v0.1.0-preview.1
+        default: v0.6.0-preview.1
         type: string
 permissions:
   contents: read
@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash scripts/ci_flutter.sh
       - run: flutter pub get
+      - name: Verify update manifest generator
+        run: python3 -m unittest discover -s test/scripts -v
       - run: flutter analyze
       - run: flutter test
       - name: Lyrics browser regression
@@ -50,7 +52,7 @@ jobs:
           GOOGLE_DRIVE_SERVER_CLIENT_ID: ${{ vars.GOOGLE_DRIVE_SERVER_CLIENT_ID }}
         run: flutter build apk --release --target-platform android-arm,android-arm64,android-x64 --dart-define="GOOGLE_DRIVE_SERVER_CLIENT_ID=$GOOGLE_DRIVE_SERVER_CLIENT_ID"
       - name: Run Android bridge JVM tests
-        run: cd android && ./gradlew :folder_audio:testDebugUnitTest
+        run: cd android && ./gradlew :folder_audio:testDebugUnitTest :app:testDebugUnitTest
       - name: Verify APK signature, package and native code
         shell: bash
         run: |
@@ -76,6 +78,10 @@ jobs:
       - run: flutter pub get
       - name: Compile iPhone and iPad target without signing
         run: flutter build ios --release --no-codesign
+      - name: Prepare macOS test configuration
+        run: flutter build macos --debug --config-only
+      - name: Test macOS update path confinement and quarantine
+        run: xcodebuild test -workspace macos/Runner.xcworkspace -scheme Runner -configuration Debug -destination 'platform=macOS' CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=NO
       - name: Build macOS release without Developer ID or notarization
         run: flutter build macos --release
       - run: bash scripts/package_macos.sh
@@ -103,5 +109,6 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid release tag'; exit 1; }
-          (cd dist && sha256sum *.apk *.dmg > SHA256SUMS.txt)
+          python3 scripts/create_update_manifest.py dist "$RELEASE_TAG"
+          (cd dist && sha256sum *.apk *.dmg update-manifest.json > SHA256SUMS.txt)
           gh release create "$RELEASE_TAG" dist/* --target "$GITHUB_SHA" --title "Cloud Music $RELEASE_TAG (preview)" --notes-file docs/RELEASE_NOTES.md --prerelease

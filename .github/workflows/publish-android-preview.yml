@@ -5,12 +5,11 @@ on:
       run_id:
         description: Successful package workflow run with android-package artifact
         required: true
-        default: '42324592648'
         type: string
       tag:
         description: New Android-only preview tag
         required: true
-        default: v0.1.0-android-preview.1
+        default: v0.6.0-android-preview.1
         type: string
 permissions:
   actions: read
@@ -42,4 +41,6 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-android-preview\.[0-9]+$ ]] || exit 1
+          python3 scripts/create_update_manifest.py dist "$RELEASE_TAG" --android-only
+          (cd dist && sha256sum *.apk update-manifest.json > SHA256SUMS.txt)
           gh release create "$RELEASE_TAG" dist/* --target "$BUILD_COMMIT" --title "Cloud Music $RELEASE_TAG (Android preview)" --notes-file docs/ANDROID_RELEASE_NOTES.md --prerelease
