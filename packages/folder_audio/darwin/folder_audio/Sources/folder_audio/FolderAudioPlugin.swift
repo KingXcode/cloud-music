@@ -172,32 +172,34 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
-        case "readLyricsCache":
+        case "readLyricsCache", "readLibraryFilter":
+            let filter = call.method == "readLibraryFilter"
             persistence.async {
                 do {
-                    let url = Self.lyricsStore
+                    let url = filter ? Self.store.deletingLastPathComponent().appendingPathComponent("library-filter.json") : Self.lyricsStore
                     let value = FileManager.default.fileExists(atPath: url.path)
-                        ? try Self.readLyrics(url, limit: 2 * 1024 * 1024) : nil
+                        ? try Self.readLyrics(url, limit: filter ? 512 : 2 * 1024 * 1024) : nil
                     DispatchQueue.main.async { result(value) }
                 } catch {
-                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法读取歌词缓存。", details: nil)) }
+                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法读取本地设置或缓存。", details: nil)) }
                 }
             }
             return
-        case "writeLyricsCache":
+        case "writeLyricsCache", "writeLibraryFilter":
+            let filter = call.method == "writeLibraryFilter"
             guard let value = args["value"] as? String else {
                 result(FlutterError(code: "invalid_arguments", message: "缺少歌词缓存内容。", details: nil)); return
             }
             persistence.async {
                 do {
                     let data = Data(value.utf8)
-                    guard data.count <= 2 * 1024 * 1024 else { throw SourceError.unsupported }
-                    let url = Self.lyricsStore
+                    guard data.count <= (filter ? 512 : 2 * 1024 * 1024) else { throw SourceError.unsupported }
+                    let url = filter ? Self.store.deletingLastPathComponent().appendingPathComponent("library-filter.json") : Self.lyricsStore
                     try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try data.write(to: url, options: .atomic)
                     DispatchQueue.main.async { result(nil) }
                 } catch {
-                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法保存歌词缓存（上限 2 MiB）。", details: nil)) }
+                    DispatchQueue.main.async { result(FlutterError(code: "lyrics_error", message: "无法保存本地设置或缓存。", details: nil)) }
                 }
             }
             return

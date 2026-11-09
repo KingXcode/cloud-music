@@ -1,3 +1,7 @@
+import 'package:cloud_music/library_filter/library_filter.dart';
+
+import 'library_filter_test.dart' show MemoryFilterStore;
+
 // Optional local visual QA. All authorization and HTTP responses are fakes.
 // CLOUD_MUSIC_CAPTURE_DIR=/tmp/cloud-music-drive-qa flutter test test/drive_visual_capture_test.dart
 import 'dart:io';
@@ -58,6 +62,7 @@ void main() {
         final platform = FakeDrivePlatform()..enabled = connected;
         final drive = DriveGateway(platform: platform, client: apiClient());
         final c = MusicController(
+          libraryFilter: LibraryFilter(store: MemoryFilterStore()),
           gateway: SourceMusicGateway(local: FakeLocalGateway(), drive: drive),
           lyrics: LyricsController(platform: FakeLyricsPlatform()),
         );

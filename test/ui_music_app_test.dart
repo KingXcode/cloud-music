@@ -4,12 +4,15 @@ import 'package:cloud_music/models.dart';
 import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
+import 'package:cloud_music/library_filter/library_filter.dart';
 
 class FakeController extends ChangeNotifier implements MusicController {
   FakeController(this.snapshot, {LyricsController? lyrics})
     : lyrics = lyrics ?? LyricsController();
   @override
   final LyricsController lyrics;
+  @override
+  final LibraryFilter libraryFilter = LibraryFilter();
   @override
   LibrarySnapshot snapshot;
   @override
@@ -124,9 +127,23 @@ void main() {
         await tester.tap(find.byType(TextField));
         await tester.enterText(find.byType(TextField), '夜色');
         await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('城市夜航'),
+          120,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('library-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
+        await tester.ensureVisible(find.text('城市夜航'));
+        await tester.pumpAndSettle();
         expect(find.text('城市夜航'), findsOneWidget);
         await tester.tap(find.text('城市夜航'));
         expect(c.playedId, 'exact-b');
+        await tester.ensureVisible(find.byTooltip('清除搜索'));
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('清除搜索'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('山间的风').last);

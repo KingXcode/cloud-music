@@ -38,23 +38,26 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
     private fun lyricsOperation(call: MethodCall, result: MethodChannel.Result): Boolean {
         when (call.method) {
-            "readLyricsCache", "writeLyricsCache" -> {
+            "readLyricsCache", "writeLyricsCache", "readLibraryFilter", "writeLibraryFilter" -> {
+                val filter = call.method.endsWith("LibraryFilter")
+                val reading = call.method.startsWith("read")
+                val limit = if (filter) 512 else 2 * 1024 * 1024
                 val value = (call.arguments as? Map<*, *>)?.get("value") as? String
-                if (call.method == "writeLyricsCache" && value == null) {
-                    result.error("invalid_arguments", "缺少歌词缓存内容。", null); return true
+                if (!reading && value == null) {
+                    result.error("invalid_arguments", "缺少本地设置或缓存内容。", null); return true
                 }
                 val generation = engineGeneration
-                val cache = lyricsCache
+                val cache = if (filter) AtomicFile(File(engine.context.filesDir, "library-filter.json")) else lyricsCache
                 lyricsIO.execute {
                     try {
                         val output: String? = synchronized(lyricsCacheLock) {
                             check(generation == engineGeneration) { "Engine detached" }
-                            if (call.method == "readLyricsCache") {
-                                try { cache.openRead().use { readLyricsText(it, 2 * 1024 * 1024) } }
+                            if (reading) {
+                                try { cache.openRead().use { readLyricsText(it, limit) } }
                                 catch (_: java.io.FileNotFoundException) { null }
                             } else {
                                 val bytes = value!!.toByteArray(Charsets.UTF_8)
-                                require(bytes.size <= 2 * 1024 * 1024) { "歌词缓存过大。" }
+                                require(bytes.size <= limit) { "本地设置或缓存过大。" }
                                 val stream = cache.startWrite()
                                 try { stream.write(bytes); cache.finishWrite(stream) }
                                 catch (e: Exception) { cache.failWrite(stream); throw e }
@@ -63,7 +66,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         }
                         main.post { result.success(output) }
                     } catch (_: Exception) {
-                        main.post { result.error("lyrics_error", "无法读取或保存歌词缓存。", null) }
+                        main.post { result.error("storage_error", "无法读取或保存本地设置与缓存。", null) }
                     }
                 }
                 return true

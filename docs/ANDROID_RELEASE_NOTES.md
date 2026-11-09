@@ -1,6 +1,8 @@
-# Android 0.5.1 按需读取体验预览
+# Android 0.6.2 短音频过滤预览
 
-本版统一可用状态文案和扫描提示。Apple iCloud promised 元数据、渐进列表与浏览器按需读取代码同步更新，但 Android APK 不包含 Apple 功能，也不能证明真实 iCloud / Safari 行为。详见 [平台限制与验收](https://github.com/KingXcode/cloud-music/blob/main/docs/ICLOUD_ON_DEMAND.md)。
+本版增加本机保存的短音频显示过滤：默认隐藏已知时长不足 30 秒的音频，可改为 1–600 秒或关闭。未知时长暂时显示，播放后补全；不为过滤下载云端音频、不删文件、不改待播清单。保留 0.6.1 歌词搜索预览和本地简体显示、0.6.0 应用更新。
+
+保留统一可用状态文案和扫描提示。Apple iCloud promised 元数据、渐进列表与浏览器按需读取代码同步更新，但 Android APK 不包含 Apple 功能，也不能证明真实 iCloud / Safari 行为。详见 [平台限制与验收](https://github.com/KingXcode/cloud-music/blob/main/docs/ICLOUD_ON_DEMAND.md)。
 
 保留音乐来源入口与 Google Drive 官方只读接入实现。需要配置 Google OAuth 客户端、Android 包名和实际安装包签名 SHA 后才可直接登录；未配置的预览版显示明确说明，系统文件播放仍可用。
 

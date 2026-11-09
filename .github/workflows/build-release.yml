@@ -33,7 +33,7 @@ jobs:
       - name: Lyrics browser regression
         env:
           CHROME_EXECUTABLE: /usr/bin/google-chrome
-        run: flutter test --platform chrome test/lyrics_web_test.dart
+        run: flutter test --platform chrome test/lyrics_web_test.dart test/library_filter_web_test.dart
       - name: Browser gateway tests
         run: node --test test/web/*.cjs
   android:

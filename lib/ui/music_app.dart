@@ -11,6 +11,7 @@ import 'lyrics_panel.dart';
 import 'music_sources_sheet.dart';
 import '../updates/update_controller.dart';
 import 'update_panel.dart';
+import 'library_filter_sheet.dart';
 
 const _accent = Color(0xFFE83E59);
 const _ink = Color(0xFF202024);
@@ -93,7 +94,7 @@ class _LibraryPageState extends State<_LibraryPage> {
   String _query = '';
   _LibrarySection _section = _LibrarySection.songs;
   String? _group;
-  bool _openingPlayer = false;
+  bool _openingPlayer = false, _openingFilter = false;
 
   @override
   void dispose() {
@@ -129,6 +130,17 @@ class _LibraryPageState extends State<_LibraryPage> {
     _openingPlayer = false;
   }
 
+  Future<void> _openFilter() async {
+    if (_openingFilter) return;
+    _openingFilter = true;
+    _searchFocus.unfocus();
+    try {
+      await showLibraryFilter(context, widget.controller);
+    } finally {
+      _openingFilter = false;
+    }
+  }
+
   void _select(_LibrarySection section) {
     setState(() {
       _section = section;
@@ -151,7 +163,10 @@ class _LibraryPageState extends State<_LibraryPage> {
     builder: (context, _) {
       final c = widget.controller;
       final s = c.snapshot;
-      final tracks = s.tracks.where((t) {
+      final visible = c.libraryFilter.visibleTracks(s.tracks);
+      final hidden = s.tracks.length - visible.length;
+      final unknown = s.tracks.where((t) => t.duration <= Duration.zero).length;
+      final tracks = visible.where((t) {
         final matches = '${t.title} ${t.artist} ${t.album} ${t.relativePath}'
             .toLowerCase()
             .contains(_query.toLowerCase());
@@ -266,7 +281,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           child: Text(
                                             s.folderName == null
                                                 ? '好音乐，就在你身边。'
-                                                : '${s.folderName} · ${s.tracks.length} 首歌曲',
+                                                : '${s.folderName} · ${visible.length} 首歌曲${hidden > 0 ? '（已隐藏 $hidden 首）' : ''}',
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
@@ -275,25 +290,75 @@ class _LibraryPageState extends State<_LibraryPage> {
                                             ),
                                           ),
                                         ),
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: TextButton.icon(
-                                          key: const Key('music-sources'),
-                                          onPressed: () =>
-                                              showMusicSources(context, c),
-                                          icon: Icon(
-                                            s.sourceKind == 'googleDrive'
-                                                ? Icons.cloud_outlined
-                                                : Icons.folder_outlined,
-                                            size: 18,
+                                      Wrap(
+                                        spacing: 8,
+                                        crossAxisAlignment:
+                                            WrapCrossAlignment.center,
+                                        children: [
+                                          TextButton.icon(
+                                            key: const Key('music-sources'),
+                                            onPressed: () =>
+                                                showMusicSources(context, c),
+                                            icon: Icon(
+                                              s.sourceKind == 'googleDrive'
+                                                  ? Icons.cloud_outlined
+                                                  : Icons.folder_outlined,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              s.sourceKind == 'googleDrive'
+                                                  ? 'Google Drive · 管理音乐来源'
+                                                  : '系统文件 · 添加网盘来源',
+                                            ),
                                           ),
-                                          label: Text(
-                                            s.sourceKind == 'googleDrive'
-                                                ? 'Google Drive · 管理音乐来源'
-                                                : '系统文件 · 添加网盘来源',
+                                          TextButton.icon(
+                                            key: const Key('library-filter'),
+                                            onPressed: !c.initialized
+                                                ? null
+                                                : _openFilter,
+                                            icon: const Icon(
+                                              Icons.filter_alt_outlined,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              c.libraryFilter.enabled
+                                                  ? '短音频过滤 · ${c.libraryFilter.minimumSeconds} 秒'
+                                                  : '短音频过滤 · 已关闭',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      if (c.libraryFilter.enabled &&
+                                          s.tracks.isNotEmpty)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
+                                          child: Text(
+                                            '已隐藏 $hidden 首短音频${unknown > 0 ? ' · $unknown 首时长未知，暂时保留' : ''}',
+                                            key: const Key(
+                                              'library-filter-summary',
+                                            ),
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 12,
+                                              height: 1.5,
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      if (c.libraryFilter.notice != null)
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
+                                          child: Text(
+                                            c.libraryFilter.notice!,
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
                                       if (widget.updates != null)
                                         Align(
                                           alignment: Alignment.centerLeft,
@@ -397,7 +462,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                               const LinearProgressIndicator(),
                                               const SizedBox(height: 6),
                                               Text(
-                                                '正在列出歌曲 · 已显示 ${s.tracks.length} 首',
+                                                '正在列出歌曲 · 已显示 ${visible.length} 首${hidden > 0 ? '，已隐藏 $hidden 首' : ''}',
                                                 style: const TextStyle(
                                                   color: _muted,
                                                   fontSize: 12,
@@ -522,12 +587,26 @@ class _LibraryPageState extends State<_LibraryPage> {
                                   ),
                                 ),
                                 if (tracks.isEmpty)
-                                  const SliverFillRemaining(
+                                  SliverFillRemaining(
                                     hasScrollBody: false,
                                     child: Center(
-                                      child: Text(
-                                        '没有找到匹配的歌曲',
-                                        style: TextStyle(color: _muted),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            visible.isEmpty && hidden > 0
+                                                ? '短音频已隐藏'
+                                                : '没有找到匹配的歌曲',
+                                            style: const TextStyle(
+                                              color: _muted,
+                                            ),
+                                          ),
+                                          if (hidden > 0)
+                                            TextButton(
+                                              onPressed: _openFilter,
+                                              child: const Text('调整过滤条件'),
+                                            ),
+                                        ],
                                       ),
                                     ),
                                   )

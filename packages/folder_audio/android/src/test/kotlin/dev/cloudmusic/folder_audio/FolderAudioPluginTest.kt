@@ -34,4 +34,14 @@ internal class FolderAudioPluginTest {
         assertEquals(0L, song.map()["durationMs"])
         assertEquals("子目录/音乐.flac", song.map()["relativePath"])
     }
+    @Test
+    fun filterWriteRequiresAStringBeforeAccessingStorage() {
+        for (arguments in listOf(null, emptyMap<String, Any>(), mapOf("value" to 30))) {
+            val result = RecordingResult()
+            FolderAudioPlugin().onMethodCall(MethodCall("writeLibraryFilter", arguments), result)
+            assertEquals(1, result.errorCount)
+            assertEquals(0, result.successCount)
+            assertEquals(0, result.notImplementedCount)
+        }
+    }
 }

@@ -43,3 +43,7 @@ Android 目录树 URI 或浏览器根目录 UUID。该标识仅用于隔离本�
 ## 渐进索引与浏览器状态（0.5.1）
 
 扫描可发布 `isScanning=true` 的局部列表，已发现条目可播放。`unloaded` 表示有文件引用但尚未验证可读，不等于云端未下载；`accessRequired` 表示只有缓存元数据，需要恢复授权或重新选择；`loading` 表示当前播放准备。Web 只有媒体可播放事件后才标记 `ready`，不使用 `cloud` 猜测 iCloud 状态。Apple 缺少资源属性时使用 `unknown`。
+
+## 资料库显示过滤偏好
+
+`readLibraryFilter` 返回独立 JSON 字符串或 null；`writeLibraryFilter({value: String})` 保存不超过 512 字节的 UTF-8 设置。Apple 和 Android 仅访问本应用私有 `library-filter.json`，串行、原子写入，与曲库、歌词缓存和源音频隔离。格式为 `{"version":1,"enabled":true,"minimumSeconds":30}`；Dart 校验 1–600 秒整数。网页同格式使用独立 localStorage key。该接口不触发来源扫描、元数据读取或音频下载，设置应用于资料库显示，不修改播放队列。

@@ -8,14 +8,27 @@ import 'gateway/source_music_gateway.dart';
 import 'drive/drive_gateway.dart';
 import 'models.dart';
 import 'lyrics/lyrics_controller.dart';
+import 'library_filter/library_filter.dart';
 
 class MusicController extends ChangeNotifier {
   // 公开的注入参数名有意与私有字段名区分。
-  MusicController({required MusicGateway gateway, LyricsController? lyrics})
+  MusicController({
+    required MusicGateway gateway,
+    LyricsController? lyrics,
+    LibraryFilter? libraryFilter,
+  })
     // ignore: prefer_initializing_formals
     : _gateway = gateway,
-      lyrics = lyrics ?? LyricsController();
+       lyrics = lyrics ?? LyricsController(),
+       libraryFilter = libraryFilter ?? LibraryFilter() {
+    this.libraryFilter.addListener(_filterChanged);
+  }
   final LyricsController lyrics;
+  final LibraryFilter libraryFilter;
+  void _filterChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
   final MusicGateway _gateway;
   DriveGateway? get drive =>
       _gateway is SourceMusicGateway ? _gateway.drive : null;
@@ -42,6 +55,7 @@ class MusicController extends ChangeNotifier {
   Future<void> _initialize() async {
     final revision = _eventRevision;
     unawaited(lyrics.initialize());
+    final filterLoaded = libraryFilter.initialize();
     _subscription = _gateway.snapshots.listen(
       (value) {
         if (_disposed) return;
@@ -63,6 +77,7 @@ class MusicController extends ChangeNotifier {
     } catch (error) {
       _showError(error);
     } finally {
+      await filterLoaded;
       if (!_disposed) {
         _initialized = true;
         notifyListeners();
@@ -150,6 +165,8 @@ class MusicController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    libraryFilter.removeListener(_filterChanged);
+    libraryFilter.dispose();
     lyrics.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_gateway.dispose());
