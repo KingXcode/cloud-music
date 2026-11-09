@@ -1,8 +1,13 @@
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/ui/lyrics_panel.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+
+import 'dart:ui' show SemanticsAction;
+
+import 'cupertino_test_helpers.dart';
 
 import 'ui_music_app_test.dart' show FakeController;
 
@@ -43,18 +48,118 @@ Future<_Controller> _mount(
   addTearDown(controller.dispose);
   await tester.pumpWidget(MusicApp(controller: controller));
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   return controller;
 }
 
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   expect(tester.takeException(), isNull);
 }
 
 void main() {
+  testWidgets('Lyrics consent preserves the dark player over light app theme', (
+    tester,
+  ) async {
+    final controller = await _mount(tester, const Size(390, 844));
+    controller.lyrics.selectTrack(_tracks.first);
+    await _tap(tester, find.byKey(const Key('open-player')));
+    await _tap(tester, find.byTooltip('歌词视图'));
+    await _tap(tester, find.byKey(const Key('lyrics-add')));
+    final dialog = find.byType(CupertinoAlertDialog);
+    expect(dialog, findsOneWidget);
+    expect(
+      CupertinoTheme.of(tester.element(dialog)).brightness,
+      Brightness.dark,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(dialog, findsNothing);
+    expectNoMaterialWidgets();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Desktop sidebar remains usable in a short window at 3x text', (
+    tester,
+  ) async {
+    await _mount(tester, const Size(1000, 320), scale: 3);
+    expect(tester.takeException(), isNull);
+    await _tap(tester, find.text('搜索').first);
+    expect(find.byType(CupertinoSearchTextField), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await _tap(tester, find.byKey(const Key('library-options')));
+    expect(cupertinoPopup, findsOneWidget);
+    await _tap(tester, find.byTooltip('关闭资料库选项'));
+    expect(cupertinoPopup, findsNothing);
+    expectNoMaterialWidgets();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Cupertino seek commits accessibility and keyboard changes', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+
+    final controller = await _mount(tester, const Size(390, 844));
+    await _tap(tester, find.byKey(const Key('open-player')));
+    final node = tester.getSemantics(find.bySemanticsLabel('播放进度'));
+    expect(node.getSemanticsData().hasAction(SemanticsAction.increase), isTrue);
+    node.owner!.performAction(node.id, SemanticsAction.increase);
+    await tester.pumpAndSettle();
+    expect(controller.sought, const Duration(seconds: 9));
+
+    final seek = find.byType(CupertinoSlider).first;
+    Focus.of(tester.element(seek)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(controller.sought, const Duration(minutes: 3));
+    await tester.sendKeyEvent(LogicalKeyboardKey.home);
+    await tester.pumpAndSettle();
+    expect(controller.sought, Duration.zero);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pumpAndSettle();
+    expect(controller.sought, const Duration(seconds: 9));
+    expectNoMaterialWidgets();
+    semantics.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Cupertino volume accepts keyboard and accessibility changes', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+
+    final controller = await _mount(tester, const Size(390, 844));
+    await _tap(tester, find.byKey(const Key('open-player')));
+    final node = tester.getSemantics(find.bySemanticsLabel('音量').first);
+    expect(node.getSemanticsData().hasAction(SemanticsAction.decrease), isTrue);
+    node.owner!.performAction(node.id, SemanticsAction.decrease);
+    await tester.pumpAndSettle();
+    expect(controller.changedVolume, closeTo(.95, .001));
+    final volume = find.byType(CupertinoSlider).last;
+    Focus.of(tester.element(volume)).requestFocus();
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+    await tester.pumpAndSettle();
+    expect(controller.changedVolume, closeTo(.95, .001));
+    await tester.sendKeyEvent(LogicalKeyboardKey.home);
+    await tester.pumpAndSettle();
+    expect(controller.changedVolume, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.end);
+    await tester.pumpAndSettle();
+    expect(controller.changedVolume, 1);
+    expectNoMaterialWidgets();
+    semantics.dispose();
+    expect(tester.takeException(), isNull);
+  });
+
   for (final size in [const Size(320, 640), const Size(390, 844)]) {
     for (final scale in [1.0, 1.8]) {
       testWidgets('Compact library exposes first track at $size scale $scale', (
@@ -80,6 +185,7 @@ void main() {
           controller.snapshot = const LibrarySnapshot();
           controller.notifyListeners();
           await tester.pumpAndSettle();
+          expectNoMaterialWidgets();
           expect(find.byKey(const Key('open-player')), findsNothing);
           expect(find.text('专辑'), findsNothing);
           expect(find.text('歌手'), findsNothing);
@@ -97,13 +203,14 @@ void main() {
   ) async {
     await _mount(tester, const Size(390, 844), scale: 1.8);
     await _tap(tester, find.byKey(const Key('library-options')));
-    expect(find.byType(BottomSheet), findsOneWidget);
+    expect(cupertinoPopup, findsOneWidget);
     await _tap(tester, find.byTooltip('关闭资料库选项'));
-    expect(find.byType(BottomSheet), findsNothing);
+    expect(cupertinoPopup, findsNothing);
     await _tap(tester, find.byKey(const Key('library-options')));
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
-    expect(find.byType(BottomSheet), findsNothing);
+    expectNoMaterialWidgets();
+    expect(cupertinoPopup, findsNothing);
     expect(find.text('First Song').first.hitTestable(), findsOneWidget);
   });
 
@@ -118,12 +225,13 @@ void main() {
       );
       controller.notifyListeners();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(tester.widget<Text>(find.text(message)).maxLines, 1);
       await _tap(tester, find.byKey(const Key('library-status-details')));
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byType(CupertinoAlertDialog), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(AlertDialog),
+          of: find.byType(CupertinoAlertDialog),
           matching: find.text(message),
         ),
         findsOneWidget,
@@ -137,6 +245,7 @@ void main() {
       );
       controller.notifyListeners();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('已发现新的音乐文件'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -155,10 +264,12 @@ void main() {
           'Third',
         );
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('Third Song'), findsOneWidget);
         if (returnWithBack) {
           await tester.binding.handlePopRoute();
           await tester.pumpAndSettle();
+          expectNoMaterialWidgets();
         } else {
           await _tap(tester, find.text('资料库').first);
         }
@@ -168,11 +279,14 @@ void main() {
         expect(find.text('Third Song'), findsNothing);
         await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('Album B'), findsOneWidget);
         await _tap(tester, find.text('搜索').first);
         expect(
           tester
-              .widget<TextField>(find.byKey(const Key('library-search')))
+              .widget<CupertinoSearchTextField>(
+                find.byKey(const Key('library-search')),
+              )
               .controller!
               .text,
           isEmpty,
@@ -210,7 +324,7 @@ void main() {
         expect(find.text('Third Song'), findsNothing);
         await _tap(tester, find.text('Second Song'));
         expect(controller.playedId, 'b');
-        await _tap(tester, find.widgetWithText(TextButton, '专辑').last);
+        await _tap(tester, find.widgetWithText(CupertinoButton, '专辑').last);
         expect(find.text('Album B'), findsOneWidget);
         // Scrolling the category header back into view is intentional on small
         // screens, where large text makes group details taller than the viewport.
@@ -230,7 +344,7 @@ void main() {
         expect(find.text('Second Song'), findsNothing);
         await _tap(tester, find.text('Third Song'));
         expect(controller.playedId, 'c');
-        await _tap(tester, find.widgetWithText(TextButton, '歌手').last);
+        await _tap(tester, find.widgetWithText(CupertinoButton, '歌手').last);
         expect(find.text('2 首歌曲'), findsWidgets);
       });
     }
@@ -248,26 +362,32 @@ void main() {
       await _tap(tester, find.text('搜索').first);
       await tester.enterText(find.byKey(const Key('library-search')), 'Second');
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('Second Song'), findsOneWidget);
       expect(find.text('Third Song'), findsNothing);
       // Invoke the actual mini-player callback twice before the route builds.
       final open = tester
-          .widget<InkWell>(find.byKey(const Key('open-player')))
-          .onTap!;
+          .widget<CupertinoButton>(find.byKey(const Key('open-player')))
+          .onPressed!;
       open();
       open();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.byTooltip('返回资料库'), findsOneWidget);
       await _tap(tester, find.byTooltip('返回资料库'));
       expect(find.byTooltip('返回资料库'), findsNothing);
       expect(find.text('Second Song'), findsOneWidget);
       expect(
-        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        tester
+            .widget<CupertinoTextField>(find.byType(CupertinoTextField))
+            .controller!
+            .text,
         'Second',
       );
       await _tap(tester, find.byKey(const Key('open-player')));
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('搜索结果 · 1 首'), findsOneWidget);
       await _tap(tester, find.text(size.width < 750 ? '资料库' : '歌曲').first);
       expect(find.byKey(const Key('library-search')), findsNothing);
@@ -312,15 +432,25 @@ void main() {
       if (size.height < 500) {
         await _tap(tester, find.byTooltip('音量'));
         final slider = find.descendant(
-          of: find.byType(BottomSheet),
-          matching: find.byType(Slider),
+          of: cupertinoPopup,
+          matching: find.byType(CupertinoSlider),
         );
         expect(slider, findsOneWidget);
-        await tester.tap(slider);
+        expect(
+          CupertinoTheme.of(tester.element(slider)).brightness,
+          Brightness.dark,
+        );
+        final bounds = tester.getRect(slider);
+        await tester.dragFrom(
+          Offset(bounds.right - 22, bounds.center.dy),
+          const Offset(-50, 0),
+        );
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(controller.changedVolume, isNotNull);
         await tester.binding.handlePopRoute();
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.byTooltip('返回资料库'), findsOneWidget);
       }
       expect(tester.takeException(), isNull);

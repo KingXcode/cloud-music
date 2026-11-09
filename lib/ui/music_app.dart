@@ -3,7 +3,9 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart' hide RepeatMode;
-import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter_localizations/flutter_localizations.dart';
+
+import 'cupertino_controls.dart';
 
 import '../models.dart';
 import '../music_controller.dart';
@@ -28,57 +30,25 @@ class MusicApp extends StatelessWidget {
   final UpdateController? updates;
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
+  Widget build(BuildContext context) => CupertinoApp(
     title: '云听 · Cloud Music',
+    locale: const Locale('zh', 'CN'),
+    supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+    localizationsDelegates: const [
+      GlobalCupertinoLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+    ],
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
+    theme: const CupertinoThemeData(
       brightness: Brightness.light,
-      scaffoldBackgroundColor: Colors.white,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: _accent,
-        primary: _accent,
-        surface: Colors.white,
-      ),
-      fontFamilyFallback: const [
-        'PingFang SC',
-        'Microsoft YaHei',
-        'sans-serif',
-      ],
-      textTheme: ThemeData.light().textTheme.apply(
-        bodyColor: _ink,
-        displayColor: _ink,
-      ),
-      dividerColor: _line,
-      splashFactory: NoSplash.splashFactory,
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: const Color(0xFFF0F0F3),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 12,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      sliderTheme: const SliderThemeData(trackHeight: 4),
-      bottomSheetTheme: const BottomSheetThemeData(
-        backgroundColor: Colors.white,
-        modalBackgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        dragHandleColor: _line,
-      ),
-      iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(48, 48),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+      primaryColor: _accent,
+      scaffoldBackgroundColor: CupertinoColors.white,
+      textTheme: CupertinoTextThemeData(
+        textStyle: TextStyle(
+          fontFamily: '.SF Pro Text',
+          fontFamilyFallback: ['PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+          fontSize: 16,
+          color: _ink,
         ),
       ),
     ),
@@ -123,23 +93,9 @@ class _LibraryPageState extends State<_LibraryPage> {
     _openingPlayer = true;
     _searchFocus.unfocus();
     await Navigator.of(context).push(
-      PageRouteBuilder<void>(
-        pageBuilder: (_, animation, secondaryAnimation) =>
-            _PlayerPage(controller: widget.controller),
-        transitionDuration: const Duration(milliseconds: 360),
-        reverseTransitionDuration: const Duration(milliseconds: 280),
-        transitionsBuilder: (_, animation, secondaryAnimation, child) =>
-            SlideTransition(
-              position: Tween(begin: const Offset(0, 1), end: Offset.zero)
-                  .animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                      reverseCurve: Curves.easeInCubic,
-                    ),
-                  ),
-              child: child,
-            ),
+      CupertinoPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _PlayerPage(controller: widget.controller),
       ),
     );
     _openingPlayer = false;
@@ -276,8 +232,8 @@ class _LibraryPageState extends State<_LibraryPage> {
             setState(() => _group = null);
           }
         },
-        child: Scaffold(
-          body: SafeArea(
+        child: CupertinoPageScaffold(
+          child: SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
                 final wide = constraints.maxWidth >= 750;
@@ -303,8 +259,8 @@ class _LibraryPageState extends State<_LibraryPage> {
                                   const SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                                    child: CupertinoActivityIndicator(
+                                      radius: 8,
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -319,7 +275,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                       ),
                                     ),
                                   ),
-                                  TextButton(
+                                  CupertinoButton(
                                     key: const Key('cancel-local-import'),
                                     onPressed: c.cancelLocalImport,
                                     child: const Text('取消'),
@@ -381,24 +337,24 @@ class _LibraryPageState extends State<_LibraryPage> {
                                             ),
                                             if (_section !=
                                                 _LibrarySection.search)
-                                              IconButton(
-                                                tooltip: c.selectsFiles
+                                              CupertinoIconControl(
+                                                label: c.selectsFiles
                                                     ? '选择或更换音乐文件'
                                                     : '选择或更换音乐文件夹',
                                                 onPressed: c.isBusy
                                                     ? null
                                                     : _addMusic,
-                                                color: _accent,
+                                                foregroundColor: _accent,
                                                 icon: const Icon(
                                                   CupertinoIcons.add,
                                                   size: 26,
                                                 ),
                                               ),
-                                            IconButton(
+                                            CupertinoIconControl(
                                               key: const Key('library-options'),
-                                              tooltip: '资料库选项',
+                                              label: '资料库选项',
                                               onPressed: _openOptions,
-                                              color: _accent,
+                                              foregroundColor: _accent,
                                               icon: const Icon(
                                                 CupertinoIcons.ellipsis_circle,
                                                 size: 25,
@@ -409,43 +365,22 @@ class _LibraryPageState extends State<_LibraryPage> {
                                         if (_section ==
                                             _LibrarySection.search) ...[
                                           const SizedBox(height: 14),
-                                          TextField(
+                                          CupertinoSearchTextField(
                                             key: const Key('library-search'),
                                             controller: _search,
                                             focusNode: _searchFocus,
-                                            textInputAction:
-                                                TextInputAction.search,
+                                            placeholder: '歌曲、歌手或专辑',
                                             onSubmitted: (_) =>
                                                 _searchFocus.unfocus(),
                                             onChanged: (value) => setState(() {
                                               _query = value;
                                               _group = null;
                                             }),
-                                            decoration: InputDecoration(
-                                              hintText: '歌曲、歌手或专辑',
-                                              prefixIcon: const Icon(
-                                                CupertinoIcons.search,
-                                                size: 21,
-                                              ),
-                                              suffixIcon: _query.isEmpty
-                                                  ? null
-                                                  : IconButton(
-                                                      tooltip: '清除搜索',
-                                                      onPressed: () {
-                                                        _search.clear();
-                                                        setState(
-                                                          () => _query = '',
-                                                        );
-                                                        _searchFocus
-                                                            .requestFocus();
-                                                      },
-                                                      icon: const Icon(
-                                                        CupertinoIcons
-                                                            .clear_circled_solid,
-                                                        size: 19,
-                                                      ),
-                                                    ),
-                                            ),
+                                            onSuffixTap: () {
+                                              _search.clear();
+                                              setState(() => _query = '');
+                                              _searchFocus.requestFocus();
+                                            },
                                           ),
                                         ],
                                         if (!wide &&
@@ -455,31 +390,39 @@ class _LibraryPageState extends State<_LibraryPage> {
                                             padding: const EdgeInsets.only(
                                               top: 12,
                                             ),
-                                            child: Container(
-                                              padding: const EdgeInsets.all(3),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFF2F2F5),
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  for (final section in [
-                                                    _LibrarySection.songs,
-                                                    _LibrarySection.albums,
-                                                    _LibrarySection.artists,
-                                                  ])
-                                                    Expanded(
-                                                      child: _CategoryButton(
-                                                        label: _label(section),
-                                                        selected:
-                                                            _section == section,
-                                                        onTap: () =>
-                                                            _select(section),
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
+                                            child: SizedBox(
+                                              width: double.infinity,
+                                              child:
+                                                  CupertinoSlidingSegmentedControl<
+                                                    _LibrarySection
+                                                  >(
+                                                    groupValue: _section,
+                                                    onValueChanged: (value) {
+                                                      if (value != null) {
+                                                        _select(value);
+                                                      }
+                                                    },
+                                                    children: {
+                                                      for (final section in [
+                                                        _LibrarySection.songs,
+                                                        _LibrarySection.albums,
+                                                        _LibrarySection.artists,
+                                                      ])
+                                                        section: Padding(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                vertical: 10,
+                                                              ),
+                                                          child: Text(
+                                                            _label(section),
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 14,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                    },
+                                                  ),
                                             ),
                                           ),
                                         if (s.isScanning)
@@ -491,7 +434,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                               crossAxisAlignment:
                                                   CrossAxisAlignment.start,
                                               children: [
-                                                const LinearProgressIndicator(),
+                                                const CupertinoProgress(),
                                                 const SizedBox(height: 6),
                                                 Text(
                                                   '正在列出歌曲 · 已显示 ${visible.length} 首',
@@ -501,7 +444,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                   ),
                                                 ),
                                                 if (s.sourceKind == 'android')
-                                                  TextButton(
+                                                  CupertinoButton(
                                                     key: const Key(
                                                       'cancel-library-scan',
                                                     ),
@@ -519,7 +462,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                   const SliverFillRemaining(
                                     hasScrollBody: false,
                                     child: Center(
-                                      child: CircularProgressIndicator(),
+                                      child: CupertinoActivityIndicator(),
                                     ),
                                   )
                                 else if (s.tracks.isEmpty)
@@ -558,7 +501,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           if (_group != null)
                                             Align(
                                               alignment: Alignment.centerLeft,
-                                              child: TextButton.icon(
+                                              child: CupertinoActionButton(
                                                 onPressed: () => setState(
                                                   () => _group = null,
                                                 ),
@@ -595,14 +538,14 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                 ),
                                               ),
                                               if (hidden > 0)
-                                                IconButton(
+                                                CupertinoIconControl(
                                                   key: const Key(
                                                     'hidden-tracks-shortcut',
                                                   ),
-                                                  tooltip:
+                                                  label:
                                                       '已隐藏 $hidden 首短音频，调整过滤',
                                                   onPressed: _openFilter,
-                                                  color: _muted,
+                                                  foregroundColor: _muted,
                                                   icon: const Icon(
                                                     CupertinoIcons
                                                         .line_horizontal_3_decrease,
@@ -614,9 +557,9 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                           _LibrarySection
                                                               .songs ||
                                                       _group != null)) ...[
-                                                IconButton(
-                                                  tooltip: '播放全部',
-                                                  color: _accent,
+                                                CupertinoIconControl(
+                                                  label: '播放全部',
+                                                  foregroundColor: _accent,
                                                   onPressed: () async {
                                                     await c.setShuffle(false);
                                                     await c.play(tracks.first);
@@ -626,9 +569,9 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                     size: 22,
                                                   ),
                                                 ),
-                                                IconButton(
-                                                  tooltip: '随机播放',
-                                                  color: _accent,
+                                                CupertinoIconControl(
+                                                  label: '随机播放',
+                                                  foregroundColor: _accent,
                                                   onPressed: () async {
                                                     await c.setShuffle(true);
                                                     await c.play(
@@ -666,7 +609,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                               ),
                                             ),
                                             if (hidden > 0)
-                                              TextButton(
+                                              CupertinoButton(
                                                 onPressed: _openFilter,
                                                 child: const Text('调整过滤条件'),
                                               ),
@@ -726,112 +669,120 @@ class _LibraryPageState extends State<_LibraryPage> {
       border: Border(right: BorderSide(color: _line)),
     ),
     padding: EdgeInsets.fromLTRB(20, short ? 14 : 32, 20, short ? 8 : 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Row(
-          children: [
-            Icon(CupertinoIcons.music_note_2, color: _accent, size: 30),
-            SizedBox(width: 10),
-            Text(
-              '云听',
-              style: TextStyle(
-                fontSize: 25,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -1,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: short ? 16 : 40),
-        if (!short)
-          const Padding(
-            padding: EdgeInsets.only(left: 12, bottom: 12),
-            child: Text(
-              '资料库',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: _muted,
-              ),
-            ),
-          ),
-        for (final section in _LibrarySection.values)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Material(
-              color: _section == section
-                  ? const Color(0xFFFCE8ED)
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-              child: ListTile(
-                dense: true,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
+    child: LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: IntrinsicHeight(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(CupertinoIcons.music_note_2, color: _accent, size: 30),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        '云听',
+                        style: TextStyle(
+                          fontSize: 25,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                leading: Icon(_icon(section), color: _accent, size: 23),
-                title: Text(
-                  _label(section),
-                  style: TextStyle(
-                    color: _section == section ? _accent : _ink,
-                    fontWeight: _section == section
-                        ? FontWeight.w700
-                        : FontWeight.w500,
+                SizedBox(height: short ? 16 : 40),
+                if (!short)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 12, bottom: 12),
+                    child: Text(
+                      '资料库',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: _muted,
+                      ),
+                    ),
                   ),
-                ),
-                onTap: () => _select(section),
-              ),
+                for (final section in _LibrarySection.values)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Semantics(
+                      selected: _section == section,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: CupertinoButton(
+                          padding: EdgeInsets.zero,
+                          onPressed: () => _select(section),
+                          child: CupertinoListTile(
+                            backgroundColor: _section == section
+                                ? const Color(0xFFFCE8ED)
+                                : CupertinoColors.transparent,
+                            leading: Icon(
+                              _icon(section),
+                              color: _accent,
+                              size: 23,
+                            ),
+                            title: Text(
+                              _label(section),
+                              style: TextStyle(
+                                color: _section == section ? _accent : _ink,
+                                fontWeight: _section == section
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                if (!short) ...[
+                  const SizedBox(height: 1, child: ColoredBox(color: _line)),
+                  const SizedBox(height: 16),
+                  const Icon(CupertinoIcons.folder, size: 22, color: _muted),
+                  const SizedBox(height: 10),
+                  Text(
+                    s.folderName ?? '属于你的音乐',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '原文件播放 · 音频不上传',
+                    style: TextStyle(color: _muted, fontSize: 11, height: 1.6),
+                  ),
+                ],
+              ],
             ),
           ),
-        const Spacer(),
-        if (!short) ...[
-          const Divider(),
-          const SizedBox(height: 16),
-          const Icon(CupertinoIcons.folder, size: 22, color: _muted),
-          const SizedBox(height: 10),
-          Text(
-            s.folderName ?? '属于你的音乐',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '原文件播放 · 音频不上传',
-            style: TextStyle(color: _muted, fontSize: 11, height: 1.6),
-          ),
-        ],
-      ],
+        ),
+      ),
     ),
   );
 
-  Widget _bottomNavigation(bool short) => Container(
-    decoration: const BoxDecoration(
-      color: _canvas,
-      border: Border(top: BorderSide(color: _line)),
-    ),
-    child: Row(
-      children: [
-        Expanded(
-          child: _NavButton(
-            label: '资料库',
-            icon: CupertinoIcons.music_albums,
-            selected: _section != _LibrarySection.search,
-            compact: short,
-            onTap: _returnToLibrary,
-          ),
-        ),
-        Expanded(
-          child: _NavButton(
-            label: '搜索',
-            icon: CupertinoIcons.search,
-            selected: _section == _LibrarySection.search,
-            compact: short,
-            onTap: () => _select(_LibrarySection.search),
-          ),
-        ),
-      ],
-    ),
+  Widget _bottomNavigation(bool short) => CupertinoTabBar(
+    currentIndex: _section == _LibrarySection.search ? 1 : 0,
+    height: short ? 48 : 54,
+    backgroundColor: _canvas,
+    activeColor: _accent,
+    inactiveColor: _muted,
+    onTap: (index) =>
+        index == 0 ? _returnToLibrary() : _select(_LibrarySection.search),
+    items: const [
+      BottomNavigationBarItem(
+        icon: Icon(CupertinoIcons.music_albums),
+        label: '资料库',
+      ),
+      BottomNavigationBarItem(icon: Icon(CupertinoIcons.search), label: '搜索'),
+    ],
   );
 
   Widget _groups(List<Track> tracks, bool wide) {
@@ -855,9 +806,9 @@ class _LibraryPageState extends State<_LibraryPage> {
           mainAxisExtent: MediaQuery.textScalerOf(context).scale(36) + 178,
         ),
         itemCount: names.length,
-        itemBuilder: (context, i) => InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
+        itemBuilder: (context, i) => CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: () {
             setState(() => _group = names[i]);
             _scrollTo(0);
           },
@@ -911,68 +862,6 @@ IconData _icon(_LibrarySection s) => switch (s) {
   _LibrarySection.artists => CupertinoIcons.person_2,
   _LibrarySection.search => CupertinoIcons.search,
 };
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.compact = false,
-  });
-  final String label;
-  final IconData icon;
-  final bool selected, compact;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    label: compact ? label : null,
-    child: TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: selected ? _accent : _muted,
-        minimumSize: Size(48, compact ? 48 : 62),
-        shape: const RoundedRectangleBorder(),
-      ),
-      child: compact
-          ? Icon(icon, size: 23)
-          : Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 23),
-                const SizedBox(height: 3),
-                Text(label, style: const TextStyle(fontSize: 11)),
-              ],
-            ),
-    ),
-  );
-}
-
-class _CategoryButton extends StatelessWidget {
-  const _CategoryButton({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    selected: selected,
-    child: TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        backgroundColor: selected ? Colors.white : Colors.transparent,
-        foregroundColor: selected ? _accent : _muted,
-        minimumSize: const Size(48, 44),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-      child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-    ),
-  );
-}
 
 class _EmptyLibrary extends StatelessWidget {
   const _EmptyLibrary({
@@ -1049,7 +938,8 @@ class _EmptyLibrary extends StatelessWidget {
             ),
           ),
           SizedBox(height: compact ? 16 : 24),
-          FilledButton.icon(
+          CupertinoActionButton(
+            filled: true,
             onPressed: busy ? null : onPick,
             icon: Icon(
               filesOnly ? CupertinoIcons.music_note : CupertinoIcons.folder,
@@ -1062,28 +952,27 @@ class _EmptyLibrary extends StatelessWidget {
                   ? '更换音乐文件夹'
                   : '选择音乐文件夹',
             ),
-            style: FilledButton.styleFrom(minimumSize: const Size(220, 52)),
           ),
           if (hasFolder)
-            TextButton.icon(
+            CupertinoActionButton(
               onPressed: busy ? null : onRefresh,
               icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
               label: Text(filesOnly ? '重新选择音乐文件' : '刷新资料库'),
             ),
           if (onScan != null)
-            TextButton.icon(
+            CupertinoActionButton(
               key: const Key('empty-scan-device'),
               onPressed: busy ? null : onScan,
               icon: const Icon(CupertinoIcons.music_note_list, size: 20),
               label: const Text('扫描本机音乐'),
             ),
           if (onPickFiles != null)
-            TextButton(
+            CupertinoButton(
               key: const Key('empty-pick-files'),
               onPressed: busy ? null : onPickFiles,
               child: const Text('或选择多个音乐文件'),
             ),
-          TextButton(
+          CupertinoButton(
             key: const Key('empty-music-sources'),
             onPressed: busy ? null : onSources,
             child: const Text('连接其他音乐来源'),
@@ -1128,16 +1017,18 @@ class _TrackRow extends StatelessWidget {
       TrackAvailability.unknown => ('状态待确认', CupertinoIcons.question_circle),
     };
     final secondary = dark ? _playerMuted : _muted;
-    return Material(
-      color: selected
-          ? (dark
-                ? Colors.white.withValues(alpha: .1)
-                : const Color(0xFFFCEEF1))
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
+    return Container(
+      decoration: BoxDecoration(
+        color: selected
+            ? (dark
+                  ? CupertinoColors.white.withValues(alpha: .1)
+                  : const Color(0xFFFCEEF1))
+            : CupertinoColors.transparent,
         borderRadius: BorderRadius.circular(12),
+      ),
+      child: CupertinoButton(
+        padding: EdgeInsets.zero,
+        onPressed: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
@@ -1154,12 +1045,12 @@ class _TrackRow extends StatelessWidget {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: .35),
+                        color: CupertinoColors.black.withValues(alpha: .35),
                         borderRadius: BorderRadius.circular(7),
                       ),
                       child: const Icon(
                         CupertinoIcons.waveform,
-                        color: Colors.white,
+                        color: CupertinoColors.white,
                         size: 23,
                       ),
                     ),
@@ -1178,7 +1069,7 @@ class _TrackRow extends StatelessWidget {
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: dark
-                            ? Colors.white
+                            ? CupertinoColors.white
                             : selected
                             ? _accent
                             : _ink,
@@ -1229,11 +1120,18 @@ class _MiniPlayer extends StatelessWidget {
     final s = controller.snapshot;
     return Padding(
       padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-      child: Material(
-        elevation: 4,
-        shadowColor: Colors.black.withValues(alpha: .12),
-        color: const Color(0xFFF4F4F7),
-        borderRadius: BorderRadius.circular(16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F4F7),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x14000000),
+              blurRadius: 12,
+              offset: Offset(0, 3),
+            ),
+          ],
+        ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1243,9 +1141,11 @@ class _MiniPlayer extends StatelessWidget {
               child: Row(
                 children: [
                   Expanded(
-                    child: InkWell(
+                    child: CupertinoButton(
+                      foregroundColor: _ink,
+                      padding: EdgeInsets.zero,
                       key: const Key('open-player'),
-                      onTap: onOpen,
+                      onPressed: onOpen,
                       borderRadius: BorderRadius.circular(12),
                       child: Padding(
                         padding: const EdgeInsets.all(4),
@@ -1289,8 +1189,8 @@ class _MiniPlayer extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    tooltip: s.isPlaying ? '暂停' : '播放',
+                  CupertinoIconControl(
+                    label: s.isPlaying ? '暂停' : '播放',
                     onPressed: s.currentTrack == null
                         ? null
                         : controller.togglePlayback,
@@ -1301,15 +1201,15 @@ class _MiniPlayer extends StatelessWidget {
                       size: 24,
                     ),
                   ),
-                  IconButton(
-                    tooltip: '下一首',
+                  CupertinoIconControl(
+                    label: '下一首',
                     onPressed: s.currentTrack == null ? null : controller.next,
                     icon: const Icon(CupertinoIcons.forward_end_fill, size: 23),
                   ),
                 ],
               ),
             ),
-            LinearProgressIndicator(
+            CupertinoProgress(
               minHeight: 2,
               value: _fraction(s.position, s.duration),
               backgroundColor: const Color(0xFFE5E5EA),
@@ -1351,220 +1251,240 @@ class _PlayerPageState extends State<_PlayerPage> {
     builder: (context, _) {
       final c = widget.controller;
       final s = c.snapshot;
-      return Theme(
-        data: Theme.of(context).copyWith(
+      return CupertinoTheme(
+        data: const CupertinoThemeData(
           brightness: Brightness.dark,
-          colorScheme: const ColorScheme.dark(
-            primary: Colors.white,
-            surface: Color(0xFF342B34),
-            secondary: Colors.white,
-          ),
-          textTheme: Theme.of(context).textTheme
-              .apply(bodyColor: Colors.white, displayColor: Colors.white),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true,
-            fillColor: const Color(0xFF473C49),
-            hintStyle: const TextStyle(color: Colors.white60),
-            labelStyle: const TextStyle(color: Colors.white70),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
+          primaryColor: CupertinoColors.white,
+          scaffoldBackgroundColor: Color(0xFF2C2431),
+          textTheme: CupertinoTextThemeData(
+            textStyle: TextStyle(
+              fontFamily: '.SF Pro Text',
+              fontFamilyFallback: [
+                'PingFang SC',
+                'Microsoft YaHei',
+                'sans-serif',
+              ],
+              fontSize: 16,
+              color: CupertinoColors.white,
             ),
-          ),
-          dialogTheme: const DialogThemeData(
-            backgroundColor: Color(0xFF342B34),
-          ),
-          bottomSheetTheme: const BottomSheetThemeData(
-            backgroundColor: Color(0xFF342B34),
-            modalBackgroundColor: Color(0xFF342B34),
-          ),
-          iconTheme: const IconThemeData(color: Colors.white),
-          iconButtonTheme: IconButtonThemeData(
-            style: IconButton.styleFrom(
-              foregroundColor: Colors.white,
-              disabledForegroundColor: Colors.white38,
-              minimumSize: const Size(48, 48),
-            ),
-          ),
-          textButtonTheme: TextButtonThemeData(
-            style: TextButton.styleFrom(foregroundColor: Colors.white),
-          ),
-          sliderTheme: SliderThemeData(
-            trackHeight: 4,
-            activeTrackColor: Colors.white.withValues(alpha: .85),
-            inactiveTrackColor: Colors.white.withValues(alpha: .18),
-            thumbColor: Colors.white,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            trackShape: const RoundedRectSliderTrackShape(),
           ),
         ),
         child: Builder(
-          builder: (context) => Scaffold(
-            backgroundColor: const Color(0xFF2C2431),
-            body: Stack(
-              children: [
-                Positioned.fill(child: _PlayerBackdrop(bytes: s.artwork)),
-                SafeArea(
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onVerticalDragEnd: (details) {
-                          if ((details.primaryVelocity ?? 0) > 250) {
-                            Navigator.pop(context);
-                          }
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                tooltip: '返回资料库',
-                                onPressed: () => Navigator.pop(context),
-                                icon: const Icon(
-                                  CupertinoIcons.chevron_down,
-                                  size: 25,
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: 34,
-                                      height: 4,
-                                      margin: const EdgeInsets.only(bottom: 7),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white24,
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                    ),
-                                    Text(
-                                      _view == _PlayerView.queue
-                                          ? '待播清单'
-                                          : _view == _PlayerView.lyrics
-                                          ? '歌词'
-                                          : '正在播放',
-                                      maxLines: 1,
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        color: _playerMuted,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 1,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: '查看歌词',
-                                onPressed: () =>
-                                    setState(() => _view = _PlayerView.lyrics),
-                                icon: const Icon(
-                                  CupertinoIcons.quote_bubble,
-                                  size: 23,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (s.message != null)
-                        _Notice(
-                          text: s.message!,
-                          dark: true,
-                          onClose: s.isLoading ? c.cancelLoading : null,
-                          closeLabel: '取消加载',
-                        ),
-                      if (c.error != null)
-                        _Notice(
-                          text: c.error!,
-                          dark: true,
-                          error: true,
-                          onClose: c.clearError,
-                        ),
-                      Expanded(
-                        child: LayoutBuilder(
-                          builder: (context, size) {
-                            final wide = size.maxWidth >= 750;
-                            final short = size.maxHeight < 480;
-                            final largeText =
-                                MediaQuery.textScalerOf(context).scale(16) > 23;
-                            final controls = _PlayerControls(
-                              controller: c,
-                              compact: short,
-                              onLyrics: () => setState(
-                                () => _view = _view == _PlayerView.lyrics
-                                    ? _PlayerView.artwork
-                                    : _PlayerView.lyrics,
-                              ),
-                              onQueue: () => setState(
-                                () => _view = _view == _PlayerView.queue
-                                    ? _PlayerView.artwork
-                                    : _PlayerView.queue,
-                              ),
-                              view: _view,
-                            );
-                            if (wide && _view != _PlayerView.artwork) {
-                              return Center(
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 1280,
+          builder: (context) => DefaultTextStyle(
+            style: CupertinoTheme.of(context).textTheme.textStyle,
+            child: CupertinoPageScaffold(
+              backgroundColor: const Color(0xFF2C2431),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: _PlayerBackdrop(bytes: s.artwork)),
+                  SafeArea(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onVerticalDragEnd: (details) {
+                            if ((details.primaryVelocity ?? 0) > 250) {
+                              Navigator.pop(context);
+                            }
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              children: [
+                                CupertinoIconControl(
+                                  label: '返回资料库',
+                                  onPressed: () => Navigator.pop(context),
+                                  icon: const Icon(
+                                    CupertinoIcons.chevron_down,
+                                    size: 25,
                                   ),
-                                  child: Padding(
-                                    padding: EdgeInsets.fromLTRB(
-                                      short ? 24 : 48,
-                                      short ? 0 : 22,
-                                      short ? 16 : 48,
-                                      short ? 8 : 28,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          flex: 5,
-                                          child: LayoutBuilder(
-                                            builder: (context, left) {
-                                              final artSize = math.min(
-                                                left.maxWidth - 32,
-                                                math.max(
-                                                  80.0,
-                                                  left.maxHeight -
-                                                      (short ? 226 : 330),
-                                                ),
-                                              );
-                                              return SingleChildScrollView(
-                                                child: Column(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    _Artwork(
-                                                      size: artSize.clamp(
-                                                        80.0,
-                                                        370.0,
-                                                      ),
-                                                      bytes: s.artwork,
-                                                      seed:
-                                                          s
-                                                              .currentTrack
-                                                              ?.album ??
-                                                          '',
-                                                      shadow: true,
-                                                    ),
-                                                    SizedBox(
-                                                      height: short ? 12 : 24,
-                                                    ),
-                                                    controls,
-                                                  ],
-                                                ),
-                                              );
-                                            },
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: 34,
+                                        height: 4,
+                                        margin: const EdgeInsets.only(
+                                          bottom: 7,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0x3DFFFFFF),
+                                          borderRadius: BorderRadius.circular(
+                                            4,
                                           ),
                                         ),
-                                        SizedBox(width: short ? 24 : 70),
-                                        Expanded(
-                                          flex: 6,
+                                      ),
+                                      Text(
+                                        _view == _PlayerView.queue
+                                            ? '待播清单'
+                                            : _view == _PlayerView.lyrics
+                                            ? '歌词'
+                                            : '正在播放',
+                                        maxLines: 1,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          color: _playerMuted,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                CupertinoIconControl(
+                                  label: '查看歌词',
+                                  onPressed: () => setState(
+                                    () => _view = _PlayerView.lyrics,
+                                  ),
+                                  icon: const Icon(
+                                    CupertinoIcons.quote_bubble,
+                                    size: 23,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (s.message != null)
+                          _Notice(
+                            text: s.message!,
+                            dark: true,
+                            onClose: s.isLoading ? c.cancelLoading : null,
+                            closeLabel: '取消加载',
+                          ),
+                        if (c.error != null)
+                          _Notice(
+                            text: c.error!,
+                            dark: true,
+                            error: true,
+                            onClose: c.clearError,
+                          ),
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, size) {
+                              final wide = size.maxWidth >= 750;
+                              final short = size.maxHeight < 480;
+                              final largeText =
+                                  MediaQuery.textScalerOf(context).scale(16) >
+                                  23;
+                              final controls = _PlayerControls(
+                                controller: c,
+                                compact: short,
+                                onLyrics: () => setState(
+                                  () => _view = _view == _PlayerView.lyrics
+                                      ? _PlayerView.artwork
+                                      : _PlayerView.lyrics,
+                                ),
+                                onQueue: () => setState(
+                                  () => _view = _view == _PlayerView.queue
+                                      ? _PlayerView.artwork
+                                      : _PlayerView.queue,
+                                ),
+                                view: _view,
+                              );
+                              if (wide && _view != _PlayerView.artwork) {
+                                return Center(
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 1280,
+                                    ),
+                                    child: Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        short ? 24 : 48,
+                                        short ? 0 : 22,
+                                        short ? 16 : 48,
+                                        short ? 8 : 28,
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 5,
+                                            child: LayoutBuilder(
+                                              builder: (context, left) {
+                                                final artSize = math.min(
+                                                  left.maxWidth - 32,
+                                                  math.max(
+                                                    80.0,
+                                                    left.maxHeight -
+                                                        (short ? 226 : 330),
+                                                  ),
+                                                );
+                                                return SingleChildScrollView(
+                                                  child: Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      _Artwork(
+                                                        size: artSize.clamp(
+                                                          80.0,
+                                                          370.0,
+                                                        ),
+                                                        bytes: s.artwork,
+                                                        seed:
+                                                            s
+                                                                .currentTrack
+                                                                ?.album ??
+                                                            '',
+                                                        shadow: true,
+                                                      ),
+                                                      SizedBox(
+                                                        height: short ? 12 : 24,
+                                                      ),
+                                                      controls,
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                          SizedBox(width: short ? 24 : 70),
+                                          Expanded(
+                                            flex: 6,
+                                            child: _view == _PlayerView.queue
+                                                ? _Queue(controller: c)
+                                                : LyricsPanel(
+                                                    immersive: true,
+                                                    controller: c.lyrics,
+                                                    position: s.position,
+                                                    onSeek: c.seek,
+                                                  ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }
+                              final showArtwork = _view == _PlayerView.artwork;
+                              if (largeText || size.maxHeight < 480) {
+                                return SingleChildScrollView(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    24,
+                                    12,
+                                    24,
+                                    16,
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      if (showArtwork)
+                                        _Artwork(
+                                          size: math.min(
+                                            size.maxWidth - 80,
+                                            210,
+                                          ),
+                                          bytes: s.artwork,
+                                          seed: s.currentTrack?.album ?? '',
+                                          shadow: true,
+                                        )
+                                      else
+                                        SizedBox(
+                                          height: math.max(
+                                            230,
+                                            size.maxHeight * .55,
+                                          ),
                                           child: _view == _PlayerView.queue
                                               ? _Queue(controller: c)
                                               : LyricsPanel(
@@ -1574,107 +1494,71 @@ class _PlayerPageState extends State<_PlayerPage> {
                                                   onSeek: c.seek,
                                                 ),
                                         ),
+                                      const SizedBox(height: 24),
+                                      controls,
+                                    ],
+                                  ),
+                                );
+                              }
+                              return Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 500,
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      28,
+                                      0,
+                                      28,
+                                      16,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Expanded(
+                                          child: showArtwork
+                                              ? LayoutBuilder(
+                                                  builder: (_, area) => Center(
+                                                    child: _Artwork(
+                                                      size: math
+                                                          .min(
+                                                            area.maxWidth - 10,
+                                                            area.maxHeight - 24,
+                                                          )
+                                                          .clamp(70.0, 370.0),
+                                                      bytes: s.artwork,
+                                                      seed:
+                                                          s
+                                                              .currentTrack
+                                                              ?.album ??
+                                                          '',
+                                                      shadow: true,
+                                                    ),
+                                                  ),
+                                                )
+                                              : _view == _PlayerView.queue
+                                              ? _Queue(controller: c)
+                                              : LyricsPanel(
+                                                  immersive: true,
+                                                  controller: c.lyrics,
+                                                  position: s.position,
+                                                  onSeek: c.seek,
+                                                ),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        controls,
                                       ],
                                     ),
                                   ),
                                 ),
                               );
-                            }
-                            final showArtwork = _view == _PlayerView.artwork;
-                            if (largeText || size.maxHeight < 480) {
-                              return SingleChildScrollView(
-                                padding: const EdgeInsets.fromLTRB(
-                                  24,
-                                  12,
-                                  24,
-                                  16,
-                                ),
-                                child: Column(
-                                  children: [
-                                    if (showArtwork)
-                                      _Artwork(
-                                        size: math.min(size.maxWidth - 80, 210),
-                                        bytes: s.artwork,
-                                        seed: s.currentTrack?.album ?? '',
-                                        shadow: true,
-                                      )
-                                    else
-                                      SizedBox(
-                                        height: math.max(
-                                          230,
-                                          size.maxHeight * .55,
-                                        ),
-                                        child: _view == _PlayerView.queue
-                                            ? _Queue(controller: c)
-                                            : LyricsPanel(
-                                                immersive: true,
-                                                controller: c.lyrics,
-                                                position: s.position,
-                                                onSeek: c.seek,
-                                              ),
-                                      ),
-                                    const SizedBox(height: 24),
-                                    controls,
-                                  ],
-                                ),
-                              );
-                            }
-                            return Center(
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 500,
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    28,
-                                    0,
-                                    28,
-                                    16,
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Expanded(
-                                        child: showArtwork
-                                            ? LayoutBuilder(
-                                                builder: (_, area) => Center(
-                                                  child: _Artwork(
-                                                    size: math
-                                                        .min(
-                                                          area.maxWidth - 10,
-                                                          area.maxHeight - 24,
-                                                        )
-                                                        .clamp(70.0, 370.0),
-                                                    bytes: s.artwork,
-                                                    seed:
-                                                        s.currentTrack?.album ??
-                                                        '',
-                                                    shadow: true,
-                                                  ),
-                                                ),
-                                              )
-                                            : _view == _PlayerView.queue
-                                            ? _Queue(controller: c)
-                                            : LyricsPanel(
-                                                immersive: true,
-                                                controller: c.lyrics,
-                                                position: s.position,
-                                                onSeek: c.seek,
-                                              ),
-                                      ),
-                                      const SizedBox(height: 16),
-                                      controls,
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                            },
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1743,18 +1627,16 @@ class _PlayerControls extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            IconButton(
-              tooltip: '上一首',
+            CupertinoIconControl(
+              label: '上一首',
               onPressed: enabled ? controller.previous : null,
               icon: const Icon(CupertinoIcons.backward_end_fill, size: 30),
             ),
-            IconButton(
+            CupertinoIconControl(
               key: const Key('player-play-pause'),
-              tooltip: s.isPlaying ? '暂停' : '播放',
+              label: s.isPlaying ? '暂停' : '播放',
               onPressed: enabled ? controller.togglePlayback : null,
-              style: IconButton.styleFrom(
-                minimumSize: Size(72, compact ? 56 : 76),
-              ),
+              minimumSize: Size(72, compact ? 56 : 76),
               icon: Icon(
                 s.isPlaying
                     ? CupertinoIcons.pause_fill
@@ -1762,8 +1644,8 @@ class _PlayerControls extends StatelessWidget {
                 size: compact ? 38 : 46,
               ),
             ),
-            IconButton(
-              tooltip: '下一首',
+            CupertinoIconControl(
+              label: '下一首',
               onPressed: enabled ? controller.next : null,
               icon: const Icon(CupertinoIcons.forward_end_fill, size: 30),
             ),
@@ -1778,10 +1660,10 @@ class _PlayerControls extends StatelessWidget {
                 color: _playerMuted,
               ),
               Expanded(
-                child: Slider(
+                child: CupertinoValueSlider(
+                  label: '音量',
                   value: s.volume.clamp(0, 1),
                   onChanged: controller.setVolume,
-                  semanticFormatterCallback: (v) => '音量 ${(v * 100).round()}%',
                 ),
               ),
               const Icon(
@@ -1795,53 +1677,49 @@ class _PlayerControls extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             if (compact)
-              IconButton(
-                tooltip: '音量',
+              CupertinoIconControl(
+                label: '音量',
                 icon: const Icon(CupertinoIcons.speaker_2_fill, size: 22),
-                onPressed: () => showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: true,
-                  useSafeArea: true,
-                  builder: (_) => AnimatedBuilder(
-                    animation: controller,
-                    builder: (context, _) => Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 30),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Text(
-                            '音量',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Slider(
+                onPressed: () async {
+                  final theme = CupertinoTheme.of(context);
+                  await showCupertinoModalPopup<void>(
+                    context: context,
+                    semanticsDismissible: true,
+                    builder: (context) => CupertinoTheme(
+                      data: theme,
+                      child: CupertinoActionSheet(
+                        title: const Text('音量'),
+                        message: AnimatedBuilder(
+                          animation: controller,
+                          builder: (context, _) => CupertinoValueSlider(
+                            label: '音量',
                             value: controller.snapshot.volume.clamp(0, 1),
                             onChanged: controller.setVolume,
-                            semanticFormatterCallback: (v) =>
-                                '音量 ${(v * 100).round()}%',
                           ),
-                        ],
+                        ),
+                        cancelButton: CupertinoActionSheetAction(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('完成'),
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             _PlayerToggle(
-              tooltip: '歌词视图',
+              label: '歌词视图',
               icon: CupertinoIcons.quote_bubble,
               selected: view == _PlayerView.lyrics,
               onPressed: onLyrics,
             ),
             _PlayerToggle(
-              tooltip: s.shuffle ? '关闭随机播放' : '随机播放',
+              label: s.shuffle ? '关闭随机播放' : '随机播放',
               icon: CupertinoIcons.shuffle,
               selected: s.shuffle,
               onPressed: () => controller.setShuffle(!s.shuffle),
             ),
             _PlayerToggle(
-              tooltip: switch (s.repeatMode) {
+              label: switch (s.repeatMode) {
                 RepeatMode.off => '顺序播放，点击切换列表循环',
                 RepeatMode.all => '列表循环，点击切换单曲循环',
                 RepeatMode.one => '单曲循环，点击关闭循环',
@@ -1856,7 +1734,7 @@ class _PlayerControls extends StatelessWidget {
               ),
             ),
             _PlayerToggle(
-              tooltip: '待播清单',
+              label: '待播清单',
               icon: CupertinoIcons.list_bullet,
               selected: view == _PlayerView.queue,
               onPressed: onQueue,
@@ -1870,27 +1748,24 @@ class _PlayerControls extends StatelessWidget {
 
 class _PlayerToggle extends StatelessWidget {
   const _PlayerToggle({
-    required this.tooltip,
+    required this.label,
     required this.icon,
     required this.selected,
     required this.onPressed,
   });
-  final String tooltip;
+  final String label;
   final IconData icon;
   final bool selected;
   final VoidCallback onPressed;
   @override
   Widget build(BuildContext context) => Semantics(
     selected: selected,
-    child: IconButton(
-      tooltip: tooltip,
+    child: CupertinoIconControl(
+      label: label,
       onPressed: onPressed,
-      style: IconButton.styleFrom(
-        backgroundColor: selected
-            ? Colors.white.withValues(alpha: .16)
-            : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+      backgroundColor: selected
+          ? CupertinoColors.white.withValues(alpha: .16)
+          : null,
       icon: Icon(icon, size: 22),
     ),
   );
@@ -1963,45 +1838,26 @@ class _SeekBarState extends State<_SeekBar> {
   double? _drag;
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 32,
-    child: SliderTheme(
-      data: SliderTheme.of(context)
-          .copyWith(trackShape: const _FullWidthTrack()),
-      child: Slider(
-        value: _drag ?? _fraction(widget.position, widget.duration),
-        onChanged: widget.onSeek == null || widget.duration <= Duration.zero
-            ? null
-            : (v) => setState(() => _drag = v),
-        onChangeEnd: (v) {
-          widget.onSeek?.call(
-            Duration(
-              milliseconds: (widget.duration.inMilliseconds * v).round(),
-            ),
-          );
-          setState(() => _drag = null);
-        },
-        semanticFormatterCallback: (v) => _time(
-          Duration(milliseconds: (widget.duration.inMilliseconds * v).round()),
+    height: 44,
+    child: CupertinoValueSlider(
+      label: '播放进度',
+      formatValue: (value) => _time(
+        Duration(
+          milliseconds: (widget.duration.inMilliseconds * value).round(),
         ),
       ),
+      value: _drag ?? _fraction(widget.position, widget.duration),
+      activeColor: CupertinoColors.white,
+      onChanged: widget.onSeek == null || widget.duration <= Duration.zero
+          ? null
+          : (v) => setState(() => _drag = v),
+      onChangeEnd: (v) {
+        widget.onSeek?.call(
+          Duration(milliseconds: (widget.duration.inMilliseconds * v).round()),
+        );
+        setState(() => _drag = null);
+      },
     ),
-  );
-}
-
-class _FullWidthTrack extends RoundedRectSliderTrackShape {
-  const _FullWidthTrack();
-  @override
-  Rect getPreferredRect({
-    required RenderBox parentBox,
-    Offset offset = Offset.zero,
-    required SliderThemeData sliderTheme,
-    bool isEnabled = false,
-    bool isDiscrete = false,
-  }) => Rect.fromLTWH(
-    offset.dx,
-    offset.dy + (parentBox.size.height - (sliderTheme.trackHeight ?? 4)) / 2,
-    parentBox.size.width,
-    sliderTheme.trackHeight ?? 4,
   );
 }
 
@@ -2039,7 +1895,7 @@ class _Artwork extends StatelessWidget {
         boxShadow: shadow
             ? [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: .24),
+                  color: CupertinoColors.black.withValues(alpha: .24),
                   blurRadius: 30,
                   offset: const Offset(0, 20),
                 ),
@@ -2084,8 +1940,8 @@ class _Artwork extends StatelessWidget {
             shape: BoxShape.circle,
             gradient: RadialGradient(
               colors: [
-                Colors.white.withValues(alpha: .18),
-                Colors.white.withValues(alpha: 0),
+                CupertinoColors.white.withValues(alpha: .18),
+                CupertinoColors.white.withValues(alpha: 0),
               ],
             ),
           ),
@@ -2100,7 +1956,7 @@ class _Artwork extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(
-              color: Colors.white.withValues(alpha: .08),
+              color: CupertinoColors.white.withValues(alpha: .08),
               width: size * .16,
             ),
           ),
@@ -2110,7 +1966,7 @@ class _Artwork extends StatelessWidget {
         child: Icon(
           CupertinoIcons.music_note,
           size: size * .39,
-          color: Colors.white.withValues(alpha: .82),
+          color: CupertinoColors.white.withValues(alpha: .82),
         ),
       ),
       if (size >= 160)
@@ -2123,7 +1979,7 @@ class _Artwork extends StatelessWidget {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: size * .032,
-              color: Colors.white.withValues(alpha: .65),
+              color: CupertinoColors.white.withValues(alpha: .65),
               letterSpacing: 2,
             ),
           ),
@@ -2176,20 +2032,21 @@ class _LibraryStatus extends StatelessWidget {
   final String message;
   final VoidCallback onDismiss;
   @override
-  Widget build(BuildContext context) => Material(
+  Widget build(BuildContext context) => ColoredBox(
     color: _canvas,
     child: Row(
       children: [
         Expanded(
-          child: InkWell(
+          child: CupertinoButton(
+            padding: EdgeInsets.zero,
             key: const Key('library-status-details'),
-            onTap: () => showDialog<void>(
+            onPressed: () => showCupertinoDialog<void>(
               context: context,
-              builder: (context) => AlertDialog(
+              builder: (context) => CupertinoAlertDialog(
                 title: const Text('资料库提示'),
                 content: SingleChildScrollView(child: Text(message)),
                 actions: [
-                  TextButton(
+                  CupertinoDialogAction(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('知道了'),
                   ),
@@ -2224,8 +2081,8 @@ class _LibraryStatus extends StatelessWidget {
             ),
           ),
         ),
-        IconButton(
-          tooltip: '关闭资料库提示',
+        CupertinoIconControl(
+          label: '关闭资料库提示',
           onPressed: onDismiss,
           icon: const Icon(CupertinoIcons.xmark, size: 16),
         ),
@@ -2248,7 +2105,7 @@ class _Notice extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     color: dark
-        ? Colors.white.withValues(alpha: .1)
+        ? CupertinoColors.white.withValues(alpha: .1)
         : error
         ? const Color(0xFFFFEFF1)
         : const Color(0xFFF1F1F5),
@@ -2258,7 +2115,7 @@ class _Notice extends StatelessWidget {
         Icon(
           error ? CupertinoIcons.exclamationmark_circle : CupertinoIcons.cloud,
           size: 19,
-          color: dark ? Colors.white : _accent,
+          color: dark ? CupertinoColors.white : _accent,
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -2268,13 +2125,16 @@ class _Notice extends StatelessWidget {
               text,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: dark ? Colors.white : _ink),
+              style: TextStyle(
+                fontSize: 12,
+                color: dark ? CupertinoColors.white : _ink,
+              ),
             ),
           ),
         ),
         if (onClose != null)
-          IconButton(
-            tooltip: closeLabel,
+          CupertinoIconControl(
+            label: closeLabel,
             onPressed: onClose,
             icon: const Icon(CupertinoIcons.xmark, size: 18),
           ),

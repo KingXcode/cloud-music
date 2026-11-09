@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+
+import 'cupertino_settings.dart';
 
 import '../drive/drive_api.dart';
 import '../drive/drive_gateway.dart';
@@ -7,15 +9,9 @@ import '../music_controller.dart';
 Future<void> showMusicSources(
   BuildContext context,
   MusicController controller,
-) => showModalBottomSheet<void>(
+) => showSettingsPopup<void>(
   context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  showDragHandle: true,
-  builder: (context) => FractionallySizedBox(
-    heightFactor: .88,
-    child: MusicSourcesSheet(controller: controller),
-  ),
+  builder: (context) => MusicSourcesSheet(controller: controller),
 );
 
 class MusicSourcesSheet extends StatefulWidget {
@@ -26,6 +22,10 @@ class MusicSourcesSheet extends StatefulWidget {
 }
 
 class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
+  final _setupLink = TextEditingController(
+    text:
+        '接入说明：github.com/KingXcode/cloud-music/blob/main/docs/GOOGLE_DRIVE.md',
+  );
   bool _showDrive = false, _startingImport = false;
   void _startImport(VoidCallback action) {
     if (_startingImport || widget.controller.isBusy || drive?.busy == true) {
@@ -42,6 +42,7 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
   void dispose() {
     // 关闭面板使迟到的目录/授权结果失效，不会偷偷替换正在使用的曲库。
     drive?.cancelBrowse(deferNotification: true);
+    _setupLink.dispose();
     super.dispose();
   }
 
@@ -64,10 +65,10 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                     style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                   ),
                 ),
-                IconButton(
+                SettingsIconButton(
                   tooltip: '关闭音乐来源',
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon: const Icon(CupertinoIcons.xmark_circle_fill),
                 ),
               ],
             ),
@@ -77,13 +78,16 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
               key: const Key('music-sources-scroll'),
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
               children: [
-                ListTile(
+                SettingsTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.folder_outlined),
+                  leading: const Icon(CupertinoIcons.folder),
                   title: const Text('系统文件'),
                   subtitle: const Text('本地、iCloud、USB 或系统文件提供器'),
                   trailing: !widget.controller.usingDrive
-                      ? const Icon(Icons.check_circle, color: Color(0xFFE83E59))
+                      ? const Icon(
+                          CupertinoIcons.checkmark_circle_fill,
+                          color: Color(0xFFE83E59),
+                        )
                       : null,
                   onTap: d?.busy == true
                       ? null
@@ -93,17 +97,17 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                         },
                 ),
                 if (!widget.controller.selectsFiles)
-                  TextButton.icon(
+                  SettingsAction(
                     key: const Key('source-pick-folder'),
                     onPressed: widget.controller.isBusy || d?.busy == true
                         ? null
                         : () => _startImport(widget.controller.pickFolder),
-                    icon: const Icon(Icons.create_new_folder_outlined),
+                    icon: const Icon(CupertinoIcons.folder_badge_plus),
                     label: const Text('选择音乐文件夹'),
                   ),
                 if (widget.controller.canPickFiles ||
                     widget.controller.selectsFiles)
-                  TextButton.icon(
+                  SettingsAction(
                     key: const Key('source-pick-files'),
                     onPressed: widget.controller.isBusy || d?.busy == true
                         ? null
@@ -112,31 +116,33 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                                 ? widget.controller.pickFiles
                                 : widget.controller.pickFolder,
                           ),
-                    icon: const Icon(Icons.library_music_outlined),
+                    icon: const Icon(CupertinoIcons.music_note_list),
                     label: const Text('选择多个音乐文件'),
                   ),
                 if (widget.controller.canScanDevice) ...[
-                  TextButton.icon(
+                  SettingsAction(
                     key: const Key('source-scan-device'),
                     onPressed: widget.controller.isBusy || d?.busy == true
                         ? null
                         : () => _startImport(widget.controller.scanDevice),
-                    icon: const Icon(Icons.manage_search),
+                    icon: const Icon(CupertinoIcons.search),
                     label: const Text('扫描本机音乐'),
                   ),
-                  const Text(
+                  Text(
                     '读取系统媒体库中的音乐，需要音乐读取权限。未收录的音乐或 U 盘可通过选择文件夹导入。',
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.5,
-                      color: Colors.black54,
+                      color: CupertinoColors.secondaryLabel.resolveFrom(
+                        context,
+                      ),
                     ),
                   ),
                 ],
-                const Divider(),
-                ListTile(
+                const SettingsSeparator(),
+                SettingsTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.cloud_outlined),
+                  leading: const Icon(CupertinoIcons.cloud),
                   title: const Text('Google Drive'),
                   subtitle: Text(
                     d?.connected == true
@@ -145,7 +151,7 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                         ? '连接后选择音乐文件夹'
                         : '需要开发者配置 OAuth Client ID',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(CupertinoIcons.chevron_forward),
                   onTap: () => setState(() => _showDrive = !_showDrive),
                 ),
                 if (_showDrive && d != null) ..._driveContent(context, d),
@@ -167,7 +173,11 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
     const SizedBox(height: 10),
     Text(
       d.playbackNotice,
-      style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.5),
+      style: TextStyle(
+        fontSize: 13,
+        color: CupertinoColors.secondaryLabel.resolveFrom(context),
+        height: 1.5,
+      ),
     ),
     const SizedBox(height: 10),
     const Text('本次连接和网盘曲库不由云听写入本地存储。网页刷新后需重新连接；原生登录状态由 Google 官方 SDK 管理。'),
@@ -176,7 +186,9 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F8),
+          color: CupertinoColors.tertiarySystemGroupedBackground.resolveFrom(
+            context,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -189,9 +201,12 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
             const SizedBox(height: 6),
             Text(d.setupMessage),
             const SizedBox(height: 8),
-            const SelectableText(
-              '接入说明：github.com/KingXcode/cloud-music/blob/main/docs/GOOGLE_DRIVE.md',
-              style: TextStyle(fontSize: 12),
+            CupertinoTextField(
+              controller: _setupLink,
+              readOnly: true,
+              maxLines: null,
+              style: CupertinoTheme.of(context).textTheme.textStyle
+                  .copyWith(fontSize: 12),
             ),
           ],
         ),
@@ -203,7 +218,9 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
         child: Text(
           d.error!,
           key: const Key('drive-error'),
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
+          style: TextStyle(
+            color: CupertinoColors.systemRed.resolveFrom(context),
+          ),
         ),
       ),
     const SizedBox(height: 12),
@@ -211,14 +228,15 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
       spacing: 10,
       runSpacing: 8,
       children: [
-        FilledButton.icon(
+        SettingsAction(
+          filled: true,
           key: const Key('drive-connect'),
           onPressed: !d.configured || d.busy ? null : d.connect,
-          icon: const Icon(Icons.login),
+          icon: const Icon(CupertinoIcons.person_crop_circle_badge_checkmark),
           label: Text(d.connected ? '重新连接' : '同意只读访问并连接 Google'),
         ),
         if (d.connected)
-          TextButton(
+          CupertinoButton(
             onPressed: d.busy ? null : widget.controller.disconnectDrive,
             child: const Text('断开并撤销授权'),
           ),
@@ -226,15 +244,15 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
     ),
     if (d.busy) ...[
       const SizedBox(height: 12),
-      const LinearProgressIndicator(),
-      TextButton(onPressed: d.cancelBrowse, child: const Text('取消读取')),
+      const SettingsProgress(),
+      CupertinoButton(onPressed: d.cancelBrowse, child: const Text('取消读取')),
     ],
     if (d.connected) ...[
       const SizedBox(height: 16),
       Wrap(
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          TextButton(
+          CupertinoButton(
             onPressed: d.busy
                 ? null
                 : () => d.openFolder(
@@ -247,15 +265,16 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
             child: const Text('我的云端硬盘'),
           ),
           for (final folder in d.path) ...[
-            const Icon(Icons.chevron_right, size: 16),
-            TextButton(
+            const Icon(CupertinoIcons.chevron_forward, size: 16),
+            CupertinoButton(
               onPressed: d.busy ? null : () => d.openFolder(folder),
               child: Text(folder.name),
             ),
           ],
         ],
       ),
-      FilledButton.tonalIcon(
+      SettingsAction(
+        filled: true,
         key: const Key('drive-use-folder'),
         onPressed: d.busy
             ? null
@@ -268,13 +287,16 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                   Navigator.pop(context);
                 }
               },
-        icon: const Icon(Icons.library_music_outlined),
+        icon: const Icon(CupertinoIcons.music_note_list),
         label: const Text('使用此文件夹（含子文件夹）'),
       ),
       const SizedBox(height: 8),
-      const Text(
+      Text(
         '只显示文件夹和音频候选；不跟随快捷方式。建议选择专用音乐目录。',
-        style: TextStyle(fontSize: 12, color: Colors.black54),
+        style: TextStyle(
+          fontSize: 12,
+          color: CupertinoColors.secondaryLabel.resolveFrom(context),
+        ),
       ),
       if (d.entries.isEmpty && !d.busy)
         const Padding(
@@ -282,16 +304,18 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
           child: Text('此目录没有可见的文件夹或音频。'),
         ),
       for (final file in d.entries)
-        ListTile(
+        SettingsTile(
           contentPadding: EdgeInsets.zero,
           leading: Icon(
-            file.isFolder ? Icons.folder_outlined : Icons.audio_file_outlined,
+            file.isFolder ? CupertinoIcons.folder : CupertinoIcons.music_note,
           ),
           title: Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis),
           subtitle: file.isFolder
               ? null
               : Text(file.canDownload ? '加入此文件夹后可播放' : '所有者禁止下载，无法播放'),
-          trailing: file.isFolder ? const Icon(Icons.chevron_right) : null,
+          trailing: file.isFolder
+              ? const Icon(CupertinoIcons.chevron_forward)
+              : null,
           onTap: !file.isFolder || d.busy ? null : () => d.openFolder(file),
         ),
     ],

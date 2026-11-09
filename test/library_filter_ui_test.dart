@@ -3,8 +3,10 @@ import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
 
 import 'controller_test.dart' show FakeGateway;
 import 'library_filter_test.dart' show MemoryFilterStore, filterTracks;
@@ -32,14 +34,19 @@ Future<MusicController> mountFilter(
   addTearDown(c.dispose);
   await tester.pumpWidget(MusicApp(controller: c));
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   return c;
 }
 
 Future<void> tapFilter(WidgetTester tester, Finder finder) async {
+  await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   expect(tester.takeException(), isNull);
 }
 
@@ -79,7 +86,7 @@ void main() {
           );
           await tapFilter(tester, find.byKey(const Key('short-audio-apply')));
           expect(c.libraryFilter.minimumSeconds, 45);
-          expect(find.byType(AlertDialog), findsNothing);
+          expect(cupertinoPopup, findsNothing);
           await openFilter(tester);
           await tester.enterText(
             find.byKey(const Key('short-audio-minimum')),
@@ -90,7 +97,8 @@ void main() {
           await openFilter(tester);
           await tester.binding.handlePopRoute();
           await tester.pumpAndSettle();
-          expect(find.byType(AlertDialog), findsNothing);
+          expectNoMaterialWidgets();
+          expect(cupertinoPopup, findsNothing);
           await openFilter(tester);
           await tapFilter(tester, find.byKey(const Key('short-audio-switch')));
           await tapFilter(tester, find.byKey(const Key('short-audio-apply')));
@@ -106,18 +114,25 @@ void main() {
     (tester) async {
       await mountFilter(tester, const Size(390, 844));
       final open = tester
-          .widget<IconButton>(find.byKey(const Key('library-options')))
+          .widget<CupertinoButton>(
+            find.descendant(
+              of: find.byKey(const Key('library-options')),
+              matching: find.byType(CupertinoButton),
+            ),
+          )
           .onPressed!;
       open();
       open();
       await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsOneWidget);
+      expectNoMaterialWidgets();
+      expect(cupertinoPopup, findsOneWidget);
       await tapFilter(tester, find.byKey(const Key('library-filter')));
-      expect(find.byType(BottomSheet), findsNothing);
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(cupertinoPopup, findsOneWidget);
+      expect(find.byTooltip('关闭资料库选项'), findsNothing);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.byType(AlertDialog), findsNothing);
+      expectNoMaterialWidgets();
+      expect(cupertinoPopup, findsNothing);
       expect(find.text('音乐资料库'), findsOneWidget);
     },
   );
@@ -136,6 +151,7 @@ void main() {
         'Short clip',
       );
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('没有找到匹配的歌曲'), findsOneWidget);
       await tapFilter(tester, find.text('调整过滤条件'));
       await tapFilter(tester, find.byKey(const Key('short-audio-switch')));

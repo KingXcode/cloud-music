@@ -1,7 +1,10 @@
 import 'package:cloud_music/ui/update_panel.dart';
+import 'package:cloud_music/ui/cupertino_settings.dart';
 import 'package:cloud_music/updates/update_controller.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
 
 import 'update_controller_test.dart'
     show ControlledUpdateBackend, updateTestRelease;
@@ -12,18 +15,18 @@ Future<void> _mount(
   double scale = 1,
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
+    CupertinoApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(scale)),
         child: child!,
       ),
-      home: Scaffold(
-        body: Column(
+      home: CupertinoPageScaffold(
+        child: Column(
           children: [
             UpdateBanner(controller: controller),
             Builder(
-              builder: (context) => TextButton(
+              builder: (context) => CupertinoButton(
                 onPressed: () => showAppUpdates(context, controller),
                 child: const Text('打开更新'),
               ),
@@ -35,6 +38,7 @@ Future<void> _mount(
   );
   await tester.tap(find.text('打开更新'));
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
 }
 
 Future<void> _unmount(WidgetTester tester, UpdateController controller) async {
@@ -60,10 +64,12 @@ void main() {
         expect(find.text('应用更新'), findsOneWidget);
         await tester.ensureVisible(find.text('下载新版'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(tester.takeException(), isNull);
         await tester.ensureVisible(find.byTooltip('关闭更新面板'));
         await tester.tap(find.byTooltip('关闭更新面板'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('应用更新'), findsNothing);
         expect(find.byKey(const Key('update-banner')), findsOneWidget);
         expect(backend.downloadCalls, 0);
@@ -86,14 +92,15 @@ void main() {
       backend.progressCallbacks.single(1024, null);
       await tester.pump();
       expect(find.textContaining('总大小未知'), findsWidgets);
-      final indicators = tester.widgetList<LinearProgressIndicator>(
-        find.byType(LinearProgressIndicator),
+      final indicators = tester.widgetList<SettingsProgress>(
+        find.byType(SettingsProgress),
       );
       expect(indicators, isNotEmpty);
       expect(indicators.every((indicator) => indicator.value == null), isTrue);
       await tester.ensureVisible(find.text('取消下载'));
       await tester.tap(find.text('取消下载'));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(backend.cancelCalls, 1);
       expect(controller.phase, UpdatePhase.available);
       backend.downloads.single.complete();
@@ -116,16 +123,19 @@ void main() {
       await tester.pump();
       await tester.tap(find.byTooltip('关闭更新面板'));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('应用更新'), findsNothing);
       expect(find.textContaining('50%'), findsOneWidget);
       expect(backend.cancelCalls, 0);
       backend.downloads.single.complete();
       await transfer;
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('新版已下载 · 点击安装'), findsOneWidget);
       expect(backend.installCalls, 0);
       await tester.tap(find.byKey(const Key('update-banner')));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.byKey(const Key('install-update')), findsOneWidget);
       await _unmount(tester, controller);
     },
@@ -145,20 +155,24 @@ void main() {
         await tester.ensureVisible(find.byKey(const Key('install-update')));
         await tester.tap(find.byKey(const Key('install-update')));
         await tester.pumpAndSettle();
-        expect(find.byType(AlertDialog), findsOneWidget);
+        expectNoMaterialWidgets();
+        expect(find.byType(CupertinoAlertDialog), findsOneWidget);
         expect(backend.installCalls, 0);
         if (platform == 'web') {
           expect(find.text('页面会重载，当前播放将停止。'), findsOneWidget);
         }
         await tester.tap(find.text('稍后'));
         await tester.pumpAndSettle();
-        expect(find.byType(AlertDialog), findsNothing);
+        expectNoMaterialWidgets();
+        expect(find.byType(CupertinoAlertDialog), findsNothing);
         expect(controller.phase, UpdatePhase.ready);
         expect(backend.installCalls, 0);
         await tester.tap(find.byKey(const Key('install-update')));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         await tester.tap(find.text('继续'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(backend.installCalls, 1);
         expect(controller.phase, UpdatePhase.ready);
         expect(tester.takeException(), isNull);
@@ -200,6 +214,7 @@ void main() {
       expect(backend.installCalls, 0);
       backend.downloads.last.complete();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(controller.phase, UpdatePhase.ready);
       await _unmount(tester, controller);
     },

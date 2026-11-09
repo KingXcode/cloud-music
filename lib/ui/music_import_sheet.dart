@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+
+import 'cupertino_settings.dart';
 
 import '../music_controller.dart';
 
@@ -14,12 +15,8 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
     action();
   }
 
-  return showModalBottomSheet<void>(
+  return showSettingsPopup<void>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    showDragHandle: true,
-    constraints: const BoxConstraints(maxWidth: 560),
     builder: (context) => SafeArea(
       top: false,
       child: SingleChildScrollView(
@@ -36,7 +33,7 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
                     style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
                   ),
                 ),
-                IconButton(
+                SettingsIconButton(
                   tooltip: '关闭添加音乐',
                   onPressed: () => Navigator.pop(context),
                   icon: const Icon(CupertinoIcons.xmark_circle_fill),
@@ -45,7 +42,7 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
             ),
             const SizedBox(height: 12),
             if (controller.canScanDevice)
-              ListTile(
+              SettingsTile(
                 key: const Key('import-scan-device'),
                 leading: const Icon(CupertinoIcons.music_note_list),
                 contentPadding: EdgeInsets.zero,
@@ -54,7 +51,7 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
                 onTap: () => start(context, controller.scanDevice),
               ),
             if (!controller.selectsFiles)
-              ListTile(
+              SettingsTile(
                 key: const Key('import-folder'),
                 leading: const Icon(CupertinoIcons.folder),
                 contentPadding: EdgeInsets.zero,
@@ -67,7 +64,7 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
                 onTap: () => start(context, controller.pickFolder),
               ),
             if (controller.canPickFiles)
-              ListTile(
+              SettingsTile(
                 key: const Key('import-files'),
                 leading: const Icon(CupertinoIcons.doc_on_doc),
                 contentPadding: EdgeInsets.zero,
@@ -76,10 +73,10 @@ Future<void> showMusicImport(BuildContext context, MusicController controller) {
                 onTap: () => start(context, controller.pickFiles),
               ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               '选择新的来源会替换当前资料库；不会移动或删除原文件。',
               style: TextStyle(
-                color: Color(0xFF6F6F76),
+                color: CupertinoColors.secondaryLabel.resolveFrom(context),
                 fontSize: 12,
                 height: 1.6,
               ),

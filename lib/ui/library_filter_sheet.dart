@@ -1,4 +1,7 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+
+import 'cupertino_settings.dart';
+
 import 'package:flutter/services.dart';
 
 import '../music_controller.dart';
@@ -6,7 +9,7 @@ import '../music_controller.dart';
 Future<void> showLibraryFilter(
   BuildContext context,
   MusicController controller,
-) => showDialog<void>(
+) => showSettingsPopup<void>(
   context: context,
   builder: (_) => _FilterDialog(controller: controller),
 );
@@ -19,7 +22,7 @@ class _FilterDialog extends StatefulWidget {
 }
 
 class _FilterDialogState extends State<_FilterDialog> {
-  final _form = GlobalKey<FormState>();
+  String? _error;
   late final _seconds = TextEditingController(
     text: '${widget.controller.libraryFilter.minimumSeconds}',
   );
@@ -32,75 +35,113 @@ class _FilterDialogState extends State<_FilterDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('短音频过滤'),
-    scrollable: true,
-    content: SizedBox(
-      width: 400,
-      child: Form(
-        key: _form,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            SwitchListTile.adaptive(
-              key: const Key('short-audio-switch'),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('隐藏短音频'),
-              value: _enabled,
-              onChanged: (value) => setState(() => _enabled = value),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              key: const Key('short-audio-minimum'),
-              controller: _seconds,
-              enabled: _enabled,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: '最短时长（秒）',
-                helperText: '1–600 秒，默认 30 秒',
+            const Expanded(
+              child: Text(
+                '短音频过滤',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
               ),
-              validator: (raw) {
-                if (!_enabled) return null;
-                final value = int.tryParse(raw ?? '');
-                return value == null || value < 1 || value > 600
-                    ? '请输入 1–600 之间的整数'
-                    : null;
-              },
             ),
-            const SizedBox(height: 18),
-            const Text('只隐藏已知时长小于设定值的歌曲，等于设定值的仍会显示。歌曲、专辑、歌手与搜索共用此设置。'),
-            const SizedBox(height: 12),
-            const Text(
-              '未知时长暂时保留，通常播放后才会补全。不会为测量时长下载云端音频，不删除源文件，也不改变当前播放或待播清单。设置只保存在本机。',
-              style: TextStyle(color: Color(0xFF78787F), height: 1.5),
+            SettingsIconButton(
+              tooltip: '关闭短音频过滤',
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(CupertinoIcons.xmark_circle_fill),
             ),
           ],
         ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      FilledButton(
-        key: const Key('short-audio-apply'),
-        onPressed: () {
-          if (!_form.currentState!.validate()) return;
-          final parsed = int.tryParse(_seconds.text);
-          final seconds = parsed != null && parsed >= 1 && parsed <= 600
-              ? parsed
-              : widget.controller.libraryFilter.minimumSeconds;
-          widget.controller.libraryFilter.update(
+        CupertinoListSection.insetGrouped(
+          margin: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            CupertinoListTile(
+              title: const Text('隐藏短音频', maxLines: 4),
+              trailing: Semantics(
+                label: '隐藏短音频',
+                child: CupertinoSwitch(
+                  key: const Key('short-audio-switch'),
+                  value: _enabled,
+                  onChanged: (value) => setState(() {
+                    _enabled = value;
+                    _error = null;
+                  }),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const Text('最短时长（秒）'),
+        const SizedBox(height: 8),
+        Semantics(
+          label: '最短时长（秒）',
+          child: CupertinoTextField(
+            key: const Key('short-audio-minimum'),
+            controller: _seconds,
             enabled: _enabled,
-            minimumSeconds: seconds,
-          );
-          Navigator.pop(context);
-        },
-        child: const Text('应用'),
-      ),
-    ],
+            placeholder: '1–600 秒，默认 30 秒',
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            padding: const EdgeInsets.all(12),
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '1–600 秒，默认 30 秒',
+          style: TextStyle(
+            color: CupertinoColors.secondaryLabel.resolveFrom(context),
+            fontSize: 13,
+          ),
+        ),
+        if (_error != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              _error!,
+              style: const TextStyle(color: CupertinoColors.systemRed),
+            ),
+          ),
+        const SizedBox(height: 18),
+        const Text('只隐藏已知时长小于设定值的歌曲，等于设定值的仍会显示。歌曲、专辑、歌手与搜索共用此设置。'),
+        const SizedBox(height: 12),
+        Text(
+          '未知时长暂时保留，通常播放后才会补全。不会为测量时长下载云端音频，不删除源文件，也不改变当前播放或待播清单。设置只保存在本机。',
+          style: TextStyle(
+            color: CupertinoColors.secondaryLabel.resolveFrom(context),
+            height: 1.5,
+          ),
+        ),
+        const SizedBox(height: 20),
+        CupertinoButton.filled(
+          key: const Key('short-audio-apply'),
+          onPressed: () {
+            final parsed = int.tryParse(_seconds.text);
+            if (_enabled && (parsed == null || parsed < 1 || parsed > 600)) {
+              setState(() => _error = '请输入 1–600 之间的整数');
+              return;
+            }
+            final seconds = parsed != null && parsed >= 1 && parsed <= 600
+                ? parsed
+                : widget.controller.libraryFilter.minimumSeconds;
+            widget.controller.libraryFilter.update(
+              enabled: _enabled,
+              minimumSeconds: seconds,
+            );
+            Navigator.pop(context);
+          },
+          child: const Text('应用'),
+        ),
+        CupertinoButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+      ],
+    ),
   );
 }

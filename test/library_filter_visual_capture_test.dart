@@ -7,7 +7,7 @@ import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,7 +22,14 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      for (final family in ['Roboto', 'PingFang SC']) {
+      for (final family in [
+        'Roboto',
+        'PingFang SC',
+        '.SF Pro Text',
+        '.SF Pro Display',
+        'CupertinoSystemText',
+        'CupertinoSystemDisplay',
+      ]) {
         await (FontLoader(family)..addFont(
               File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
                   .readAsBytes()
@@ -33,12 +40,6 @@ void main() {
       await (FontLoader('packages/cupertino_icons/CupertinoIcons')..addFont(
             File(
               '${Platform.environment['PUB_CACHE']}/hosted/pub.dev/cupertino_icons-1.0.9/assets/CupertinoIcons.ttf',
-            ).readAsBytes().then((b) => ByteData.sublistView(b)),
-          ))
-          .load();
-      await (FontLoader('MaterialIcons')..addFont(
-            File(
-              '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
             ).readAsBytes().then((b) => ByteData.sublistView(b)),
           ))
           .load();

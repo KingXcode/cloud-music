@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
+
+import 'cupertino_settings.dart';
 
 import '../music_controller.dart';
 
@@ -9,12 +10,8 @@ Future<LibraryOption?> showLibraryOptions(
   BuildContext context,
   MusicController controller, {
   required bool hasUpdates,
-}) => showModalBottomSheet<LibraryOption>(
+}) => showSettingsPopup<LibraryOption>(
   context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  useSafeArea: true,
-  constraints: const BoxConstraints(maxWidth: 560),
   builder: (context) => AnimatedBuilder(
     animation: controller,
     builder: (context, _) {
@@ -22,7 +19,7 @@ Future<LibraryOption?> showLibraryOptions(
       final filter = controller.libraryFilter;
       final hidden = s.tracks.where((t) => filter.hides(t)).length;
       final unknown = s.tracks.where((t) => t.duration <= Duration.zero).length;
-      final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+      final muted = CupertinoColors.secondaryLabel.resolveFrom(context);
       return SafeArea(
         top: false,
         child: ConstrainedBox(
@@ -47,7 +44,7 @@ Future<LibraryOption?> showLibraryOptions(
                         ),
                       ),
                     ),
-                    IconButton(
+                    SettingsIconButton(
                       tooltip: '关闭资料库选项',
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(CupertinoIcons.xmark_circle_fill),
@@ -59,7 +56,7 @@ Future<LibraryOption?> showLibraryOptions(
                   style: TextStyle(color: muted, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
-                ListTile(
+                SettingsTile(
                   key: const Key('music-sources'),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(CupertinoIcons.folder),
@@ -75,7 +72,7 @@ Future<LibraryOption?> showLibraryOptions(
                   ),
                   onTap: () => Navigator.pop(context, LibraryOption.sources),
                 ),
-                ListTile(
+                SettingsTile(
                   key: const Key('refresh-library'),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(CupertinoIcons.arrow_clockwise),
@@ -86,8 +83,8 @@ Future<LibraryOption?> showLibraryOptions(
                   enabled: s.folderName != null && !controller.isBusy,
                   onTap: () => Navigator.pop(context, LibraryOption.refresh),
                 ),
-                const Divider(height: 24),
-                ListTile(
+                const SettingsSeparator(height: 24),
+                SettingsTile(
                   key: const Key('library-filter'),
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(CupertinoIcons.slider_horizontal_3),
@@ -119,7 +116,7 @@ Future<LibraryOption?> showLibraryOptions(
                     style: TextStyle(color: muted, fontSize: 12),
                   ),
                 if (hasUpdates)
-                  ListTile(
+                  SettingsTile(
                     key: const Key('app-updates'),
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(CupertinoIcons.arrow_down_circle),
@@ -131,7 +128,7 @@ Future<LibraryOption?> showLibraryOptions(
                     onTap: () => Navigator.pop(context, LibraryOption.updates),
                   ),
                 if (s.sourceKind == 'web' || s.sourceKind == 'apple') ...[
-                  const Divider(height: 24),
+                  const SettingsSeparator(height: 24),
                   Text(
                     '文件与下载说明',
                     style: TextStyle(

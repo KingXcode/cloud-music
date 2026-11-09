@@ -1,9 +1,27 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 import '../lyrics/lyrics_controller.dart';
 import '../lyrics/lyrics_models.dart';
 import '../lyrics/lyrics_matching.dart';
 import '../lyrics/lyrics_script.dart';
+
+Future<T?> _showLyricsDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) {
+  final theme = CupertinoTheme.of(context);
+  return showCupertinoDialog<T>(
+    context: context,
+    builder: (dialogContext) => CupertinoTheme(
+      data: theme,
+      child: DefaultTextStyle(
+        style: theme.textTheme.textStyle,
+        child: Builder(builder: builder),
+      ),
+    ),
+  );
+}
 
 /// 仅在局部重建的歌词视图；自动联网状态由用户的一次性授权控制。
 class LyricsPanel extends StatefulWidget {
@@ -90,7 +108,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     c.suspendAutomaticSelection();
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
-    final query = await showDialog<List<String>>(
+    final query = await _showLyricsDialog<List<String>>(
       context: context,
       builder: (_) => _SearchConsentDialog(
         title: _querySelection == selection ? _lastQuery![0] : track.title,
@@ -122,23 +140,22 @@ class _LyricsPanelState extends State<LyricsPanel> {
     if (_dialogOpen) return;
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
-    final accepted = await showDialog<bool>(
+    final accepted = await _showLyricsDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => CupertinoAlertDialog(
         key: const Key('lyrics-auto-consent'),
         title: const Text('开启自动歌词'),
-        scrollable: true,
         content: const Text(
           '开启后，播放所选歌曲时会自动向 LRCLIB（lrclib.net）发送歌名、歌手和可选专辑名，包括繁简字形变体；该服务也会看到你的 IP 地址。无结果时会省略专辑再查找。不会上传音频、文件路径或时长，也不会扫描整库联网。\n\n'
           '仅在歌名、歌手、版本和时长匹配可靠时自动保存歌词；不确定时由你选择。歌词仅缓存到本机，版权归原权利人，请仅在获准使用时下载。\n\n'
           '记住本机选择，之后无需逐曲确认。可随时在歌词选项中关闭。',
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('暂不开启'),
           ),
-          FilledButton(
+          CupertinoDialogAction(
             key: const Key('lyrics-auto-confirm'),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('同意并开启'),
@@ -162,7 +179,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     c.suspendAutomaticSelection();
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
-    final text = await showDialog<String>(
+    final text = await _showLyricsDialog<String>(
       context: context,
       builder: (_) => const _PasteLyricsDialog(),
     );
@@ -191,7 +208,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
         key: const Key('lyrics-panel'),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF111B2E),
+          color: CupertinoColors.secondarySystemBackground.resolveFrom(context),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Column(
@@ -208,7 +225,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
             if (document?.isSynced == true && document?.instrumental != true)
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton(
+                child: CupertinoButton(
                   key: const Key('lyrics-follow'),
                   onPressed: () => setState(() {
                     _follow = !_follow;
@@ -226,11 +243,11 @@ class _LyricsPanelState extends State<LyricsPanel> {
               Text(
                 '来源：${document.source} · ${c.preferSimplified ? '简体显示' : '原文显示'}',
                 key: const Key('lyrics-source'),
-                style: Theme.of(context).textTheme.bodySmall,
+                style: const TextStyle(fontSize: 12),
               ),
             ],
             const SizedBox(height: 8),
-            const SelectableText(
+            const _SelectableLyricsText(
               '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
               style: TextStyle(fontSize: 12, color: Color(0xFF9FAABD)),
             ),
@@ -246,7 +263,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     if (_dialogOpen || c.busy) return;
     setState(() => _dialogOpen = true);
     _refreshSheet?.call(() {});
-    final accepted = await showDialog<bool>(
+    final accepted = await _showLyricsDialog<bool>(
       context: context,
       builder: (_) => _LyricsPreviewDialog(
         controller: c,
@@ -268,7 +285,9 @@ class _LyricsPanelState extends State<LyricsPanel> {
   List<Widget> _management(BuildContext context) {
     final c = widget.controller;
     final enabled = c.track != null && !c.busy && !_dialogOpen;
-    final colors = Theme.of(context).colorScheme;
+    final primary = CupertinoTheme.of(context).primaryColor;
+    final surface = CupertinoColors.tertiarySystemFill.resolveFrom(context);
+    final error = CupertinoColors.systemRed.resolveFrom(context);
     final candidates = c.candidates
         .where((candidate) => !_syncedOnly || candidate.document.isSynced)
         .toList();
@@ -279,13 +298,13 @@ class _LyricsPanelState extends State<LyricsPanel> {
           padding: const EdgeInsets.all(16),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: colors.surfaceContainerHighest.withValues(alpha: .5),
+            color: surface.withValues(alpha: .5),
             borderRadius: BorderRadius.circular(16),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.music_note_rounded, color: colors.primary),
+              Icon(CupertinoIcons.music_note, color: primary),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -310,7 +329,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
                       c.document == null
                           ? '尚未保存歌词'
                           : '已在本机 · ${_kind(c.document!)}',
-                      style: TextStyle(color: colors.primary, fontSize: 12),
+                      style: TextStyle(color: primary, fontSize: 12),
                     ),
                   ],
                 ),
@@ -322,25 +341,25 @@ class _LyricsPanelState extends State<LyricsPanel> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          FilledButton.icon(
+          _LyricsActionButton(
             key: const Key('lyrics-search'),
             onPressed: enabled ? _search : null,
-            icon: const Icon(Icons.search),
+            icon: const Icon(CupertinoIcons.search),
             label: Text(c.error == null ? '搜索歌词' : '修改并重试'),
           ),
-          OutlinedButton.icon(
+          _LyricsActionButton(
             key: const Key('lyrics-import'),
             onPressed: enabled ? c.importFile : null,
-            icon: const Icon(Icons.file_open_outlined),
+            icon: const Icon(CupertinoIcons.doc),
             label: const Text('导入 LRC / TXT'),
           ),
-          TextButton(
+          CupertinoButton(
             key: const Key('lyrics-paste'),
             onPressed: enabled ? _paste : null,
             child: const Text('粘贴歌词'),
           ),
           if (c.busy)
-            TextButton(
+            CupertinoButton(
               key: const Key('lyrics-cancel-search'),
               onPressed: c.cancelSearch,
               child: const Text('取消'),
@@ -349,7 +368,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
       ),
       if (c.busy) ...[
         const SizedBox(height: 12),
-        const LinearProgressIndicator(key: Key('lyrics-loading')),
+        const CupertinoActivityIndicator(key: Key('lyrics-loading')),
         const SizedBox(height: 8),
         Text(c.searchStage ?? '正在保存到本机…'),
       ],
@@ -359,7 +378,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
           child: Text(
             c.error!,
             key: const Key('lyrics-error'),
-            style: TextStyle(color: colors.error),
+            style: TextStyle(color: error),
           ),
         ),
       if (c.retryAfter != null)
@@ -376,29 +395,17 @@ class _LyricsPanelState extends State<LyricsPanel> {
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            ChoiceChip(
-              key: const Key('lyrics-filter-all'),
-              label: const Text('全部'),
-              selected: !_syncedOnly,
-              onSelected: (_) {
-                setState(() => _syncedOnly = false);
-                _refreshSheet?.call(() {});
-              },
-            ),
-            ChoiceChip(
-              key: const Key('lyrics-filter-synced'),
-              label: const Text('仅逐行同步'),
-              selected: _syncedOnly,
-              onSelected: (_) {
-                setState(() => _syncedOnly = true);
-                _refreshSheet?.call(() {});
-              },
-            ),
-          ],
+        CupertinoSlidingSegmentedControl<bool>(
+          groupValue: _syncedOnly,
+          children: const {
+            false: Text('全部', key: Key('lyrics-filter-all')),
+            true: Text('仅逐行同步', key: Key('lyrics-filter-synced')),
+          },
+          onValueChanged: (value) {
+            if (value == null) return;
+            setState(() => _syncedOnly = value);
+            _refreshSheet?.call(() {});
+          },
         ),
         const SizedBox(height: 8),
         if (candidates.isEmpty)
@@ -417,97 +424,118 @@ class _LyricsPanelState extends State<LyricsPanel> {
             itemBuilder: (context, index) {
               final candidate = candidates[index];
               final warning = _candidateWarning(c, candidate);
-              return Material(
-                color: colors.surfaceContainerHighest.withValues(alpha: .4),
-                borderRadius: BorderRadius.circular(14),
+              return Container(
+                decoration: BoxDecoration(
+                  color: surface.withValues(alpha: .4),
+                  borderRadius: BorderRadius.circular(14),
+                ),
                 clipBehavior: Clip.antiAlias,
-                child: ListTile(
+                child: CupertinoButton(
                   key: ValueKey('lyrics-candidate-${candidate.id}'),
-                  contentPadding: const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 8,
                   ),
-                  title: Text(
-                    candidate.title,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          [
-                            candidate.artist.isEmpty
-                                ? '歌手未知'
-                                : candidate.artist,
-                            if (candidate.album.isNotEmpty) candidate.album,
-                          ].join(' · '),
+                  onPressed: enabled ? () => _preview(candidate) : null,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              candidate.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    [
+                                      candidate.artist.isEmpty
+                                          ? '歌手未知'
+                                          : candidate.artist,
+                                      if (candidate.album.isNotEmpty)
+                                        candidate.album,
+                                    ].join(' · '),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '${_duration(candidate.duration)} · '
+                                    '${_kind(candidate.document)} · LRCLIB',
+                                  ),
+                                  if (warning != null) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      warning,
+                                      style: TextStyle(color: error),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    '预览歌词',
+                                    style: TextStyle(color: primary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${_duration(candidate.duration)} · '
-                          '${_kind(candidate.document)} · LRCLIB',
-                        ),
-                        if (warning != null) ...[
-                          const SizedBox(height: 6),
-                          Text(warning, style: TextStyle(color: colors.error)),
-                        ],
-                        const SizedBox(height: 6),
-                        Text('预览歌词', style: TextStyle(color: colors.primary)),
-                      ],
-                    ),
+                      ),
+                      const Icon(CupertinoIcons.chevron_right),
+                    ],
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: enabled ? () => _preview(candidate) : null,
                 ),
               );
             },
           ),
       ],
       const SizedBox(height: 20),
-      const Divider(),
+      const _LyricsSeparator(),
       const SizedBox(height: 12),
       const Text('歌词文字', style: TextStyle(fontWeight: FontWeight.w600)),
       const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 4,
-        children: [
-          ChoiceChip(
-            key: const Key('lyrics-script-simplified'),
-            label: const Text('简体中文'),
-            selected: c.preferSimplified,
-            onSelected: (_) => c.setPreferSimplified(true),
-          ),
-          ChoiceChip(
-            key: const Key('lyrics-script-original'),
-            label: const Text('保留原文'),
-            selected: !c.preferSimplified,
-            onSelected: (_) => c.setPreferSimplified(false),
-          ),
-        ],
+      CupertinoSlidingSegmentedControl<bool>(
+        groupValue: c.preferSimplified,
+        children: const {
+          true: Text('简体中文', key: Key('lyrics-script-simplified')),
+          false: Text('保留原文', key: Key('lyrics-script-original')),
+        },
+        onValueChanged: (value) {
+          if (value != null) c.setPreferSimplified(value);
+        },
       ),
       const SizedBox(height: 6),
-      Text(
-        '仅在本机转换中文字形，保留原始歌词和时间轴；不是翻译。',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
+      Text('仅在本机转换中文字形，保留原始歌词和时间轴；不是翻译。', style: const TextStyle(fontSize: 12)),
       const SizedBox(height: 12),
-      Material(
-        color: Colors.transparent,
-        child: SwitchListTile.adaptive(
-          key: const Key('lyrics-auto-switch'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('自动搜索歌词'),
-          subtitle: Text(
-            c.automaticEnabled
-                ? '已开启 · 可靠匹配后自动保存，不确定时由你选择'
-                : '可选开启 · 只为播放的歌曲查找，不扫描整库',
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('自动搜索歌词'),
+                const SizedBox(height: 4),
+                Text(
+                  c.automaticEnabled
+                      ? '已开启 · 可靠匹配后自动保存，不确定时由你选择'
+                      : '可选开启 · 只为播放的歌曲查找，不扫描整库',
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
           ),
-          value: c.automaticEnabled,
-          onChanged: _dialogOpen ? null : _toggleAutomatic,
-        ),
+          const SizedBox(width: 12),
+          CupertinoSwitch(
+            key: const Key('lyrics-auto-switch'),
+            value: c.automaticEnabled,
+            onChanged: _dialogOpen ? null : _toggleAutomatic,
+          ),
+        ],
       ),
     ];
   }
@@ -516,66 +544,103 @@ class _LyricsPanelState extends State<LyricsPanel> {
     if (_optionsOpen) return;
     registerLyricsConversionLicense();
     _optionsOpen = true;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, refresh) {
-          _refreshSheet = refresh;
-          return AnimatedBuilder(
-            animation: widget.controller,
-            builder: (context, _) => ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * .8,
-              ),
-              child: SingleChildScrollView(
-                key: const Key('lyrics-options-sheet'),
-                padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      '查找与管理歌词',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
+    final theme = CupertinoTheme.of(context);
+    try {
+      await showCupertinoModalPopup<void>(
+        context: context,
+        semanticsDismissible: true,
+        builder: (context) => CupertinoTheme(
+          data: theme,
+          child: DefaultTextStyle(
+            style: theme.textTheme.textStyle,
+            child: StatefulBuilder(
+              builder: (context, refresh) {
+                _refreshSheet = refresh;
+                return AnimatedBuilder(
+                  animation: widget.controller,
+                  builder: (context, _) => Padding(
+                    padding: EdgeInsets.only(
+                      bottom: MediaQuery.viewInsetsOf(context).bottom,
+                    ),
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 600),
+                      color: CupertinoColors.systemBackground.resolveFrom(
+                        context,
+                      ),
+                      child: SafeArea(
+                        top: false,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight:
+                                (MediaQuery.sizeOf(context).height -
+                                    MediaQuery.viewInsetsOf(context).bottom) *
+                                .8,
+                          ),
+                          child: SingleChildScrollView(
+                            key: const Key('lyrics-options-sheet'),
+                            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: CupertinoButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('完成'),
+                                  ),
+                                ),
+                                const Text(
+                                  '查找与管理歌词',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                ..._management(context),
+                                if (widget.controller.document != null) ...[
+                                  const SizedBox(height: 20),
+                                  Text(
+                                    '来源：${widget.controller.document!.source}',
+                                    key: const Key('lyrics-source'),
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                const _SelectableLyricsText(
+                                  '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: CupertinoButton(
+                                    key: const Key('lyrics-conversion-license'),
+                                    onPressed: () => Navigator.of(context).push(
+                                      CupertinoPageRoute<void>(
+                                        builder: (_) =>
+                                            const _LyricsLicensesPage(),
+                                      ),
+                                    ),
+                                    child: const Text('字形转换开源许可 · OpenCC'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    ..._management(context),
-                    if (widget.controller.document != null) ...[
-                      const SizedBox(height: 20),
-                      Text(
-                        '来源：${widget.controller.document!.source}',
-                        key: const Key('lyrics-source'),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    const SelectableText(
-                      '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        key: const Key('lyrics-conversion-license'),
-                        onPressed: () => showLicensePage(context: context),
-                        child: const Text('字形转换开源许可 · OpenCC'),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
-          );
-        },
-      ),
-    );
-    _refreshSheet = null;
-    _optionsOpen = false;
+          ),
+        ),
+      );
+    } finally {
+      _refreshSheet = null;
+      _optionsOpen = false;
+    }
   }
 
   Widget _immersive(
@@ -595,16 +660,21 @@ class _LyricsPanelState extends State<LyricsPanel> {
               child: Text(
                 '歌词',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: Color(0xB3FFFFFF),
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            IconButton(
-              key: const Key('lyrics-options'),
-              tooltip: '歌词选项',
-              onPressed: _showOptions,
-              icon: const Icon(Icons.more_horiz, color: Colors.white),
+            Semantics(
+              label: '歌词选项',
+              child: CupertinoButton(
+                key: const Key('lyrics-options'),
+                onPressed: _showOptions,
+                child: const Icon(
+                  CupertinoIcons.ellipsis,
+                  color: CupertinoColors.white,
+                ),
+              ),
             ),
           ],
         ),
@@ -616,10 +686,10 @@ class _LyricsPanelState extends State<LyricsPanel> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    Colors.transparent,
-                    Colors.white,
-                    Colors.white,
-                    Colors.transparent,
+                    CupertinoColors.transparent,
+                    CupertinoColors.white,
+                    CupertinoColors.white,
+                    CupertinoColors.transparent,
                   ],
                   stops: [0, .06, .92, 1],
                 ).createShader(bounds),
@@ -644,34 +714,37 @@ class _LyricsPanelState extends State<LyricsPanel> {
         ),
         if (empty && hasTrack && document?.instrumental != true)
           Center(
-            child: TextButton.icon(
+            child: _LyricsActionButton(
               key: const Key('lyrics-add'),
               onPressed: widget.controller.automaticEnabled
                   ? _showOptions
                   : () => _toggleAutomatic(true),
-              icon: const Icon(Icons.add, color: Colors.white),
+              icon: const Icon(
+                CupertinoIcons.add,
+                color: CupertinoColors.white,
+              ),
               label: Text(
                 widget.controller.automaticEnabled ? '选择版本 / 歌词选项' : '开启自动歌词',
-                style: const TextStyle(color: Colors.white),
+                style: const TextStyle(color: CupertinoColors.white),
               ),
             ),
           ),
         if (!_follow && document?.isSynced == true)
           Center(
-            child: TextButton.icon(
+            child: _LyricsActionButton(
               key: const Key('lyrics-follow'),
               onPressed: () => setState(() {
                 _follow = true;
                 _lastActive = -2;
               }),
               icon: const Icon(
-                Icons.my_location,
+                CupertinoIcons.location,
                 size: 18,
-                color: Colors.white,
+                color: CupertinoColors.white,
               ),
               label: const Text(
                 '回到当前歌词',
-                style: TextStyle(color: Colors.white),
+                style: TextStyle(color: CupertinoColors.white),
               ),
             ),
           ),
@@ -716,14 +789,14 @@ class _LyricsPanelState extends State<LyricsPanel> {
       return SingleChildScrollView(
         key: const Key('lyrics-plain-scroll'),
         controller: _scroll,
-        child: SelectableText(
+        child: _SelectableLyricsText(
           document.text,
           key: const Key('lyrics-plain'),
           style: TextStyle(
             height: 1.55,
             fontSize: widget.immersive ? 30 : 14,
             fontWeight: widget.immersive ? FontWeight.w700 : FontWeight.w400,
-            color: widget.immersive ? Colors.white : null,
+            color: widget.immersive ? CupertinoColors.white : null,
           ),
         ),
       );
@@ -745,22 +818,15 @@ class _LyricsPanelState extends State<LyricsPanel> {
             child: Semantics(
               selected: selected,
               label: '${_duration(line.time)} ${line.text}',
-              child: TextButton(
+              child: CupertinoButton(
                 key: ValueKey('lyrics-line-$index'),
-                style: TextButton.styleFrom(
-                  alignment: Alignment.centerLeft,
-                  foregroundColor: widget.immersive
-                      ? (selected ? Colors.white : const Color(0x80FFFFFF))
-                      : (selected
-                            ? const Color(0xFFFFB86B)
-                            : const Color(0xFF9FAABD)),
-                  backgroundColor: selected && !widget.immersive
-                      ? const Color(0x22FFB86B)
-                      : Colors.transparent,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
+                alignment: Alignment.centerLeft,
+                color: selected && !widget.immersive
+                    ? const Color(0x22FFB86B)
+                    : CupertinoColors.transparent,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
                 ),
                 onPressed: () {
                   setState(() {
@@ -772,6 +838,13 @@ class _LyricsPanelState extends State<LyricsPanel> {
                 child: Text(
                   line.text.isEmpty ? '♪' : line.text,
                   style: TextStyle(
+                    color: widget.immersive
+                        ? (selected
+                              ? CupertinoColors.white
+                              : const Color(0x80FFFFFF))
+                        : (selected
+                              ? const Color(0xFFFFB86B)
+                              : const Color(0xFF9FAABD)),
                     height: widget.immersive ? 1.3 : 1.6,
                     fontSize: widget.immersive ? 32 : 16,
                     fontWeight: widget.immersive || selected
@@ -846,11 +919,9 @@ class _LyricsPreviewDialog extends StatelessWidget {
           ? candidate.document.simplified()
           : candidate.document;
       final warning = _candidateWarning(controller, candidate);
-      return AlertDialog(
+      return CupertinoAlertDialog(
         key: const Key('lyrics-preview-dialog'),
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         title: const Text('预览歌词'),
-        scrollable: true,
         content: SizedBox(
           width: 520,
           child: Column(
@@ -872,20 +943,25 @@ class _LyricsPreviewDialog extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 '${doc.source} · ${controller.preferSimplified ? '简体显示' : '原文显示'} · 可滚动预览',
-                style: Theme.of(context).textTheme.bodySmall,
+                style: const TextStyle(fontSize: 12),
               ),
               if (warning != null) ...[
                 const SizedBox(height: 10),
                 Text(
                   warning,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  style: TextStyle(
+                    color: CupertinoColors.systemRed.resolveFrom(context),
+                  ),
                 ),
               ],
               if (!valid) ...[
                 const SizedBox(height: 10),
                 const Text('当前歌曲或搜索结果已变更，请关闭后重新选择。'),
               ],
-              const Divider(height: 28),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: _LyricsSeparator(),
+              ),
               SizedBox(
                 height: (MediaQuery.sizeOf(context).height * .34).clamp(
                   120,
@@ -895,7 +971,7 @@ class _LyricsPreviewDialog extends StatelessWidget {
                     ? const Center(child: Text('此版本标记为纯音乐，无歌词。'))
                     : SingleChildScrollView(
                         key: const Key('lyrics-preview-scroll'),
-                        child: SelectableText(
+                        child: _SelectableLyricsText(
                           doc.isSynced
                               ? doc.lines
                                     .map(
@@ -918,16 +994,15 @@ class _LyricsPreviewDialog extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(
+          CupertinoDialogAction(
             key: const Key('lyrics-preview-cancel'),
             onPressed: () => Navigator.pop(context, false),
             child: const Text('返回结果'),
           ),
-          FilledButton.icon(
+          CupertinoDialogAction(
             key: const Key('lyrics-preview-save'),
             onPressed: valid ? () => Navigator.pop(context, true) : null,
-            icon: const Icon(Icons.download_done),
-            label: const Text('保存到本机'),
+            child: const Text('保存到本机'),
           ),
         ],
       );
@@ -951,6 +1026,7 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
   late final _title = TextEditingController(text: widget.title);
   late final _artist = TextEditingController(text: widget.artist);
   late final _album = TextEditingController(text: widget.album);
+  bool _showPrivacy = false;
 
   @override
   void dispose() {
@@ -961,11 +1037,9 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => CupertinoAlertDialog(
     key: const Key('lyrics-consent-dialog'),
-    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
     title: const Text('搜索在线歌词'),
-    scrollable: true,
     content: SizedBox(
       width: 420,
       child: Column(
@@ -976,49 +1050,48 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
             '核对歌名和歌手，可编辑搜索词，不会修改音乐标签。会逐步忽略专辑、尝试繁简字形；仍无匹配时按歌名查找，由你预览确认。',
           ),
           const SizedBox(height: 16),
-          TextField(
+          CupertinoTextField(
             key: const Key('lyrics-query-title'),
             controller: _title,
-            decoration: const InputDecoration(labelText: '歌名（必填）'),
+            placeholder: '歌名（必填）',
             onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 12),
-          TextField(
+          CupertinoTextField(
             key: const Key('lyrics-query-artist'),
             controller: _artist,
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: '歌手（推荐，可留空）'),
+            placeholder: '歌手（推荐，可留空）',
           ),
           const SizedBox(height: 12),
-          TextField(
+          CupertinoTextField(
             key: const Key('lyrics-query-album'),
             controller: _album,
-            decoration: const InputDecoration(labelText: '专辑（可选）'),
+            placeholder: '专辑（可选）',
           ),
           const SizedBox(height: 16),
           const Text(
             '搜索会将以上歌曲信息及繁简变体发送至 LRCLIB（lrclib.net），服务可看到你的 IP。音频、文件路径、时长不会上传。',
             style: TextStyle(fontSize: 12),
           ),
-          const ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: Text('来源、隐私与版权说明', style: TextStyle(fontSize: 13)),
-            children: [
-              Text(
-                'LRCLIB 是社区歌词库，可能未收录、存在不同版本或时间轴错误。只有保存后才替换当前歌词，内容仅缓存到本机。版权归原权利人，请仅在获准使用时下载。每次手动搜索均需确认，取消或返回不会发送请求。',
-              ),
-            ],
+          CupertinoButton(
+            onPressed: () => setState(() => _showPrivacy = !_showPrivacy),
+            child: const Text('来源、隐私与版权说明', style: TextStyle(fontSize: 13)),
           ),
+          if (_showPrivacy)
+            const Text(
+              'LRCLIB 是社区歌词库，可能未收录、存在不同版本或时间轴错误。只有保存后才替换当前歌词，内容仅缓存到本机。版权归原权利人，请仅在获准使用时下载。每次手动搜索均需确认，取消或返回不会发送请求。',
+            ),
         ],
       ),
     ),
     actions: [
-      TextButton(
+      CupertinoDialogAction(
         key: const Key('lyrics-consent-cancel'),
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(
+      CupertinoDialogAction(
         key: const Key('lyrics-consent-confirm'),
         onPressed: _title.text.trim().isEmpty
             ? null
@@ -1048,11 +1121,9 @@ class _PasteLyricsDialogState extends State<_PasteLyricsDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => CupertinoAlertDialog(
     key: const Key('lyrics-paste-dialog'),
-    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
     title: const Text('粘贴歌词'),
-    scrollable: true,
     content: SizedBox(
       width: 420,
       child: Column(
@@ -1060,24 +1131,24 @@ class _PasteLyricsDialogState extends State<_PasteLyricsDialog> {
         children: [
           const Text('支持带时间戳的 LRC 或纯文本。仅保存在本机，导入后替换当前歌词。'),
           const SizedBox(height: 12),
-          TextField(
+          CupertinoTextField(
             key: const Key('lyrics-paste-input'),
             controller: _text,
             minLines: 4,
             maxLines: 8,
             maxLength: 300000,
-            decoration: const InputDecoration(labelText: '歌词文本'),
+            placeholder: '歌词文本',
             onChanged: (_) => setState(() {}),
           ),
         ],
       ),
     ),
     actions: [
-      TextButton(
+      CupertinoDialogAction(
         onPressed: () => Navigator.pop(context),
         child: const Text('取消'),
       ),
-      FilledButton(
+      CupertinoDialogAction(
         key: const Key('lyrics-paste-confirm'),
         onPressed: _text.text.trim().isEmpty
             ? null
@@ -1085,5 +1156,120 @@ class _PasteLyricsDialogState extends State<_PasteLyricsDialog> {
         child: const Text('导入'),
       ),
     ],
+  );
+}
+
+class _LyricsActionButton extends StatelessWidget {
+  const _LyricsActionButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+  final Widget icon, label;
+  final VoidCallback? onPressed;
+  @override
+  Widget build(BuildContext context) => CupertinoButton(
+    onPressed: onPressed,
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        icon,
+        const SizedBox(width: 8),
+        Flexible(child: label),
+      ],
+    ),
+  );
+}
+
+class _LyricsSeparator extends StatelessWidget {
+  const _LyricsSeparator();
+  @override
+  Widget build(BuildContext context) => Container(
+    height: .5,
+    color: CupertinoColors.separator.resolveFrom(context),
+  );
+}
+
+/// Selectable lyrics use Cupertino handles and a native context menu.
+class _SelectableLyricsText extends StatefulWidget {
+  const _SelectableLyricsText(this.data, {super.key, this.style});
+  final String data;
+  final TextStyle? style;
+  @override
+  State<_SelectableLyricsText> createState() => _SelectableLyricsTextState();
+}
+
+class _SelectableLyricsTextState extends State<_SelectableLyricsText> {
+  final _focus = FocusNode();
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => SelectableRegion(
+    focusNode: _focus,
+    selectionControls: cupertinoTextSelectionHandleControls,
+    contextMenuBuilder: (context, state) =>
+        CupertinoAdaptiveTextSelectionToolbar.buttonItems(
+          anchors: state.contextMenuAnchors,
+          buttonItems: state.contextMenuButtonItems,
+        ),
+    child: Text(widget.data, style: widget.style),
+  );
+}
+
+class _LyricsLicensesPage extends StatefulWidget {
+  const _LyricsLicensesPage();
+  @override
+  State<_LyricsLicensesPage> createState() => _LyricsLicensesPageState();
+}
+
+class _LyricsLicensesPageState extends State<_LyricsLicensesPage> {
+  late final _licenses = LicenseRegistry.licenses.toList();
+  @override
+  Widget build(BuildContext context) => CupertinoPageScaffold(
+    navigationBar: const CupertinoNavigationBar(middle: Text('开源许可')),
+    child: SafeArea(
+      child: FutureBuilder<List<LicenseEntry>>(
+        future: _licenses,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('暂时无法加载开源许可。'));
+          }
+          final entries = snapshot.data;
+          if (entries == null) {
+            return const Center(child: CupertinoActivityIndicator());
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(20),
+            itemCount: entries.length,
+            separatorBuilder: (_, _) => const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: _LyricsSeparator(),
+            ),
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    entry.packages.join(', '),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 12),
+                  _SelectableLyricsText(
+                    entry.paragraphs.map((p) => p.text).join('\n\n'),
+                    style: const TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    ),
   );
 }

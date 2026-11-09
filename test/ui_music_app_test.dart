@@ -1,6 +1,9 @@
 import 'package:cloud_music/drive/drive_gateway.dart';
-import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/cupertino.dart' hide RepeatMode;
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
+
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/music_controller.dart';
@@ -149,6 +152,7 @@ void main() {
         final c = FakeController(const LibrarySnapshot());
         await tester.pumpWidget(MusicApp(controller: c));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('你的音乐，不必搬家'), findsOneWidget);
         expect(tester.takeException(), isNull);
         c.snapshot = const LibrarySnapshot(
@@ -159,12 +163,15 @@ void main() {
         );
         c.notifyListeners();
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(tester.takeException(), isNull);
         await tester.tap(find.text('搜索').first);
         await tester.pumpAndSettle();
-        await tester.tap(find.byType(TextField));
-        await tester.enterText(find.byType(TextField), '夜色');
+        expectNoMaterialWidgets();
+        await tester.tap(find.byType(CupertinoTextField));
+        await tester.enterText(find.byType(CupertinoTextField), '夜色');
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         await tester.scrollUntilVisible(
           find.text('城市夜航'),
           120,
@@ -177,24 +184,40 @@ void main() {
         );
         await tester.ensureVisible(find.text('城市夜航'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('城市夜航'), findsOneWidget);
         await tester.tap(find.text('城市夜航'));
         expect(c.playedId, 'exact-b');
-        await tester.ensureVisible(find.byTooltip('清除搜索'));
+        await tester.ensureVisible(
+          find.descendant(
+            of: find.byKey(const Key('library-search')),
+            matching: find.byType(CupertinoButton),
+          ),
+        );
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('清除搜索'));
+        expectNoMaterialWidgets();
+        await tester.tap(
+          find.descendant(
+            of: find.byKey(const Key('library-search')),
+            matching: find.byType(CupertinoButton),
+          ),
+        );
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         await tester.tap(find.text('山间的风').last);
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         // 迷你播放器打开真实路由，返回后恢复音乐库。
         expect(find.byTooltip('返回资料库'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('查看歌词'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.text('歌词').last.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('返回资料库'));
         await tester.pumpAndSettle();
+        expectNoMaterialWidgets();
         expect(find.byKey(const Key('library-search')), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
@@ -206,12 +229,15 @@ void main() {
     final c = FakeController(const LibrarySnapshot())..error = '文件夹权限需要重新授权';
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.ensureVisible(find.text('选择音乐文件夹'));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.tap(find.text('选择音乐文件夹'));
     expect(c.picked, 1);
     await tester.tap(find.byTooltip('关闭提示'));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(find.text('文件夹权限需要重新授权'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -232,9 +258,11 @@ void main() {
     );
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('山间的风').last);
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(find.byTooltip('返回资料库'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -275,8 +303,10 @@ void main() {
     );
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.tap(find.text('山间的风').last);
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     c.snapshot = const LibrarySnapshot(
       folderName: '我的音乐',
       tracks: tracks,
@@ -285,6 +315,7 @@ void main() {
     );
     c.notifyListeners();
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(find.text('文件提供方无法下载，请检查网络'), findsOneWidget);
     c.snapshot = const LibrarySnapshot(
       folderName: '我的音乐',
@@ -315,6 +346,7 @@ void main() {
     final c = FakeController(snapshot);
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(find.text('选择音乐文件（可多选）'), findsOneWidget);
     expect(find.text('选择音乐文件夹'), findsNothing);
     expect(find.byTooltip('选择或更换音乐文件'), findsOneWidget);
@@ -322,6 +354,7 @@ void main() {
     await tester.ensureVisible(find.text('选择音乐文件（可多选）'));
     await tester.tap(find.text('选择音乐文件（可多选）'));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.tap(find.text('选择音乐文件（可多选）'));
     expect(c.picked, 2);
     expect(tester.takeException(), isNull);

@@ -8,7 +8,7 @@ import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/lyrics/lyrics_platform.dart';
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/ui/lyrics_panel.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,15 +56,23 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      await (FontLoader('Roboto')..addFont(
-            File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
-                .readAsBytes()
-                .then(ByteData.sublistView),
-          ))
-          .load();
-      await (FontLoader('MaterialIcons')..addFont(
+      for (final family in [
+        'Roboto',
+        '.SF Pro Text',
+        '.SF Pro Display',
+        'CupertinoSystemText',
+        'CupertinoSystemDisplay',
+      ]) {
+        await (FontLoader(family)..addFont(
+              File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
+                  .readAsBytes()
+                  .then(ByteData.sublistView),
+            ))
+            .load();
+      }
+      await (FontLoader('packages/cupertino_icons/CupertinoIcons')..addFont(
             File(
-              '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+              '${Platform.environment['PUB_CACHE']}/hosted/pub.dev/cupertino_icons-1.0.9/assets/CupertinoIcons.ttf',
             ).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
@@ -90,19 +98,16 @@ void main() {
       await tester.pumpWidget(
         RepaintBoundary(
           key: boundary,
-          child: MaterialApp(
-            theme: ThemeData(
-              colorSchemeSeed: const Color(0xFFD63C60),
-              useMaterial3: true,
-            ),
+          child: CupertinoApp(
+            theme: const CupertinoThemeData(primaryColor: Color(0xFFD63C60)),
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context)
                   .copyWith(textScaler: TextScaler.linear(scale)),
               child: child!,
             ),
-            home: Scaffold(
+            home: CupertinoPageScaffold(
               backgroundColor: const Color(0xFF352932),
-              body: SafeArea(
+              child: SafeArea(
                 child: Padding(
                   padding: const EdgeInsets.all(20),
                   child: LyricsPanel(

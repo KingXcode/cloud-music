@@ -1,7 +1,9 @@
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
 
 import 'ui_music_app_test.dart' show FakeController;
 
@@ -26,19 +28,23 @@ Future<FakeController> mount(
   addTearDown(c.lyrics.dispose);
   await tester.pumpWidget(MusicApp(controller: c));
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   return c;
 }
 
 Future<void> tap(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   await tester.tap(finder);
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   expect(tester.takeException(), isNull);
 }
 
-Finder get add => find.byWidgetPredicate(
-  (widget) => widget is IconButton && widget.tooltip == '选择或更换音乐文件夹',
+Finder get add => find.descendant(
+  of: find.byTooltip('选择或更换音乐文件夹'),
+  matching: find.byType(CupertinoButton),
 );
 
 void main() {
@@ -52,7 +58,7 @@ void main() {
       (tester) async {
         await mount(tester, capability, scale: 1.8);
         await tap(tester, add);
-        expect(find.byType(BottomSheet), findsOneWidget);
+        expect(cupertinoPopup, findsOneWidget);
         expect(find.byKey(const Key('import-folder')), findsOneWidget);
         expect(
           find.byKey(const Key('import-files')),
@@ -63,7 +69,7 @@ void main() {
           capability.canScanDevice ? findsOneWidget : findsNothing,
         );
         await tap(tester, find.byTooltip('关闭添加音乐'));
-        expect(find.byType(BottomSheet), findsNothing);
+        expect(cupertinoPopup, findsNothing);
       },
     );
   }
@@ -71,18 +77,20 @@ void main() {
     'Repeated add creates one chooser; cancel has no import side effects',
     (tester) async {
       final c = await mount(tester, android);
-      final open = tester.widget<IconButton>(add).onPressed!;
+      final open = tester.widget<CupertinoButton>(add).onPressed!;
       open();
       open();
       await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsOneWidget);
+      expectNoMaterialWidgets();
+      expect(cupertinoPopup, findsOneWidget);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsNothing);
+      expectNoMaterialWidgets();
+      expect(cupertinoPopup, findsNothing);
       expect([c.picked, c.pickedFiles, c.scans], [0, 0, 0]);
       await tap(tester, add);
       await tap(tester, find.byTooltip('关闭添加音乐'));
-      expect(find.byType(BottomSheet), findsNothing);
+      expect(cupertinoPopup, findsNothing);
     },
   );
   testWidgets(
@@ -96,7 +104,7 @@ void main() {
       ]) {
         await tap(tester, add);
         await tap(tester, find.byKey(Key(action)));
-        expect(find.byType(BottomSheet), findsNothing);
+        expect(cupertinoPopup, findsNothing);
       }
       expect([c.picked, c.pickedFiles, c.scans], [1, 1, 1]);
     },
@@ -107,7 +115,7 @@ void main() {
       final c = await mount(tester, android);
       await tap(tester, find.text('选择音乐文件夹'));
       expect(c.picked, 1);
-      expect(find.byType(BottomSheet), findsNothing);
+      expect(cupertinoPopup, findsNothing);
       await tap(tester, find.byKey(const Key('empty-scan-device')));
       await tap(tester, find.byKey(const Key('empty-pick-files')));
       expect([c.picked, c.pickedFiles, c.scans], [1, 1, 1]);
@@ -119,7 +127,7 @@ void main() {
     final c = await mount(tester, const LibrarySnapshot());
     await tap(tester, add);
     expect(c.picked, 1);
-    expect(find.byType(BottomSheet), findsNothing);
+    expect(cupertinoPopup, findsNothing);
   });
   testWidgets('Music sources expose separate folder, files and scan actions', (
     tester,
@@ -149,7 +157,7 @@ void main() {
     );
     c.notifyListeners();
     await tester.pump();
-    expect(tester.widget<IconButton>(add).onPressed, isNull);
+    expect(tester.widget<CupertinoButton>(add).onPressed, isNull);
     await tester.tap(find.byKey(const Key('cancel-library-scan')));
     expect(c.cancelled, 1);
     expect(tester.takeException(), isNull);
@@ -178,10 +186,11 @@ void main() {
       expect(find.byKey(const Key('staged-import-progress')), findsOneWidget);
       expect(find.byKey(const Key('open-player')), findsOneWidget);
       expect(find.text('Drive playing song'), findsWidgets);
-      expect(tester.widget<IconButton>(add).onPressed, isNull);
+      expect(tester.widget<CupertinoButton>(add).onPressed, isNull);
       expect(find.byKey(const Key('cancel-library-scan')), findsNothing);
       await tester.tap(find.byKey(const Key('cancel-local-import')));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(c.localImportCancelled, 1);
       expect(c.cancelled, 0);
       expect(c.usingDrive, isTrue);
@@ -189,7 +198,7 @@ void main() {
       expect(c.snapshot.isPlaying, isTrue);
       expect(find.byKey(const Key('open-player')), findsOneWidget);
       expect(find.byKey(const Key('staged-import-progress')), findsNothing);
-      expect(tester.widget<IconButton>(add).onPressed, isNotNull);
+      expect(tester.widget<CupertinoButton>(add).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     },
   );
@@ -200,13 +209,19 @@ void main() {
       final c = await mount(tester, android);
       await tap(tester, add);
       final choose = tester
-          .widget<ListTile>(find.byKey(const Key('import-files')))
+          .widget<CupertinoListTile>(
+            find.descendant(
+              of: find.byKey(const Key('import-files')),
+              matching: find.byType(CupertinoListTile),
+            ),
+          )
           .onTap!;
       choose();
       choose();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(c.pickedFiles, 1);
-      expect(find.byType(BottomSheet), findsNothing);
+      expect(cupertinoPopup, findsNothing);
       expect(find.byKey(const Key('library-options')), findsOneWidget);
       expect(find.text('音乐资料库'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -219,11 +234,17 @@ void main() {
       await tap(tester, find.byKey(const Key('library-options')));
       await tap(tester, find.byKey(const Key('music-sources')));
       final choose = tester
-          .widget<TextButton>(find.byKey(const Key('source-pick-files')))
+          .widget<CupertinoButton>(
+            find.descendant(
+              of: find.byKey(const Key('source-pick-files')),
+              matching: find.byType(CupertinoButton),
+            ),
+          )
           .onPressed!;
       choose();
       choose();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(c.pickedFiles, 1);
       expect(find.byTooltip('关闭音乐来源'), findsNothing);
       expect(find.byKey(const Key('library-options')), findsOneWidget);
@@ -246,6 +267,7 @@ void main() {
           .controller!;
       scroll.jumpTo(1300);
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       final offset = scroll.offset;
       await tap(tester, find.text('搜索').first);
       expect(
@@ -258,8 +280,10 @@ void main() {
         'Song 70',
       );
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.byKey(const Key('library-search')), findsNothing);
       expect(scroll.offset, closeTo(offset, .1));
       expect(tester.takeException(), isNull);

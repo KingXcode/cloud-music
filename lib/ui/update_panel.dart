@@ -1,4 +1,6 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+
+import 'cupertino_settings.dart';
 
 import '../updates/update_controller.dart';
 
@@ -9,11 +11,8 @@ String updateBytes(int count) => count < 1024 * 1024
 Future<void> showAppUpdates(
   BuildContext context,
   UpdateController controller,
-) => showModalBottomSheet<void>(
+) => showSettingsPopup<void>(
   context: context,
-  isScrollControlled: true,
-  showDragHandle: true,
-  useSafeArea: true,
   builder: (_) => UpdatePanel(controller: controller),
 );
 
@@ -35,12 +34,12 @@ class UpdateBanner extends StatelessWidget {
         return const SizedBox.shrink();
       }
       final downloading = c.phase == UpdatePhase.downloading;
-      return Material(
-        color: Theme.of(context).colorScheme.primaryContainer
-            .withValues(alpha: .4),
-        child: InkWell(
+      return ColoredBox(
+        color: CupertinoTheme.of(context).primaryColor.withValues(alpha: .08),
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
           key: const Key('update-banner'),
-          onTap: () => showAppUpdates(context, c),
+          onPressed: () => showAppUpdates(context, c),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
@@ -48,7 +47,7 @@ class UpdateBanner extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.system_update_alt, size: 20),
+                    const Icon(CupertinoIcons.arrow_down_circle, size: 20),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -60,15 +59,12 @@ class UpdateBanner extends StatelessWidget {
                         style: const TextStyle(fontSize: 13),
                       ),
                     ),
-                    const Icon(Icons.chevron_right, size: 18),
+                    const Icon(CupertinoIcons.chevron_forward, size: 18),
                   ],
                 ),
                 if (downloading) ...[
                   const SizedBox(height: 6),
-                  LinearProgressIndicator(
-                    value: c.progress,
-                    semanticsLabel: '新版下载进度',
-                  ),
+                  SettingsProgress(value: c.progress, semanticsLabel: '新版下载进度'),
                 ],
               ],
             ),
@@ -114,10 +110,10 @@ class UpdatePanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
+                  SettingsIconButton(
                     tooltip: '关闭更新面板',
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close),
+                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
                   ),
                 ],
               ),
@@ -136,7 +132,7 @@ class UpdatePanel extends StatelessWidget {
                     ? '自动检查新版本；下载后交给系统安装器确认。仅接受与当前应用签名一致、版本更高的 APK。'
                     : '按原安装渠道更新。',
                 style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: CupertinoColors.secondaryLabel.resolveFrom(context),
                   height: 1.5,
                 ),
               ),
@@ -171,10 +167,7 @@ class UpdatePanel extends StatelessWidget {
               ],
               if (downloading) ...[
                 const SizedBox(height: 20),
-                LinearProgressIndicator(
-                  value: c.progress,
-                  semanticsLabel: '新版下载进度',
-                ),
+                SettingsProgress(value: c.progress, semanticsLabel: '新版下载进度'),
                 const SizedBox(height: 8),
                 Text(_progressLabel(c), key: const Key('update-progress')),
                 if (c.progress == 1) const Text('正在校验完整性，请稍候…'),
@@ -187,7 +180,7 @@ class UpdatePanel extends StatelessWidget {
                     key: const Key('update-message'),
                     style: TextStyle(
                       color: c.phase == UpdatePhase.failed
-                          ? Theme.of(context).colorScheme.error
+                          ? CupertinoColors.systemRed.resolveFrom(context)
                           : null,
                     ),
                   ),
@@ -198,35 +191,37 @@ class UpdatePanel extends StatelessWidget {
                 runSpacing: 10,
                 children: [
                   if (downloading)
-                    OutlinedButton(
+                    CupertinoButton(
                       onPressed: c.cancelDownload,
                       child: const Text('取消下载'),
                     ),
                   if (!c.busy && !ready && c.phase != UpdatePhase.unsupported)
-                    OutlinedButton(
+                    CupertinoButton(
                       onPressed: c.check,
                       child: const Text('检查更新'),
                     ),
                   if (!c.busy && !ready && c.release != null)
-                    FilledButton.icon(
+                    SettingsAction(
+                      filled: true,
                       onPressed: c.download,
-                      icon: const Icon(Icons.download),
+                      icon: const Icon(CupertinoIcons.arrow_down),
                       label: Text(
                         c.phase == UpdatePhase.failed ? '重新下载' : '下载新版',
                       ),
                     ),
                   if (ready)
-                    OutlinedButton(
+                    CupertinoButton(
                       onPressed: c.redownload,
                       child: const Text('重新下载'),
                     ),
                   if (ready)
-                    FilledButton.icon(
+                    SettingsAction(
+                      filled: true,
                       key: const Key('install-update'),
                       onPressed: () async {
-                        final confirmed = await showDialog<bool>(
+                        final confirmed = await showCupertinoDialog<bool>(
                           context: context,
-                          builder: (context) => AlertDialog(
+                          builder: (context) => CupertinoAlertDialog(
                             title: Text(
                               platform == 'web'
                                   ? '现在重载新版？'
@@ -242,11 +237,12 @@ class UpdatePanel extends StatelessWidget {
                                   : '将打开系统安装器。安装期间应用可能退出；如果需要允许此来源，系统会引导你设置。',
                             ),
                             actions: [
-                              TextButton(
+                              CupertinoDialogAction(
                                 onPressed: () => Navigator.pop(context, false),
                                 child: const Text('稍后'),
                               ),
-                              FilledButton(
+                              CupertinoDialogAction(
+                                isDefaultAction: true,
                                 onPressed: () => Navigator.pop(context, true),
                                 child: const Text('继续'),
                               ),
@@ -255,7 +251,7 @@ class UpdatePanel extends StatelessWidget {
                         );
                         if (confirmed == true) await c.install();
                       },
-                      icon: const Icon(Icons.system_update_alt),
+                      icon: const Icon(CupertinoIcons.arrow_down_circle),
                       label: Text(
                         platform == 'web'
                             ? '重载使用新版'
@@ -270,7 +266,7 @@ class UpdatePanel extends StatelessWidget {
                       child: SizedBox(
                         width: 24,
                         height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CupertinoActivityIndicator(),
                       ),
                     ),
                 ],

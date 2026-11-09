@@ -5,8 +5,10 @@ import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/lyrics/lyrics_platform.dart';
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/ui/lyrics_panel.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
 
 // 原创虚构测试文本，不摘录已发表的歌词。
 const _track = Track(
@@ -60,6 +62,7 @@ Future<void> _tap(WidgetTester tester, String key) async {
   await tester.ensureVisible(_key(key));
   await tester.tap(_key(key));
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
 }
 
 Future<LyricsController> _mount(
@@ -75,15 +78,15 @@ Future<LyricsController> _mount(
   controller.selectTrack(_track);
   addTearDown(controller.dispose);
   await tester.pumpWidget(
-    MaterialApp(
-      theme: ThemeData.dark(useMaterial3: true),
+    CupertinoApp(
+      theme: const CupertinoThemeData(brightness: Brightness.dark),
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context)
             .copyWith(textScaler: TextScaler.linear(textScale)),
         child: child!,
       ),
-      home: Scaffold(
-        body: immersive
+      home: CupertinoPageScaffold(
+        child: immersive
             ? SizedBox(
                 height: 240,
                 child: LyricsPanel(
@@ -104,6 +107,7 @@ Future<LyricsController> _mount(
     ),
   );
   await tester.pumpAndSettle();
+  expectNoMaterialWidgets();
   return controller;
 }
 
@@ -128,12 +132,14 @@ void main() {
     expect(platform.requests, isEmpty);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(controller.automaticEnabled, false);
     expect(platform.requests, isEmpty);
     await _tap(tester, 'lyrics-add');
     await _tap(tester, 'lyrics-auto-confirm');
     await tester.pump(const Duration(milliseconds: 750));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(controller.automaticEnabled, true);
     expect(platform.requests, hasLength(2));
     expect(controller.candidates, hasLength(1));
@@ -157,6 +163,7 @@ void main() {
       await _tap(tester, 'lyrics-auto-confirm');
       await tester.pump(const Duration(milliseconds: 750));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(controller.document?.isSynced, true);
       expect(_key('lyrics-line-0'), findsOneWidget);
       expect(_key('lyrics-consent-dialog'), findsNothing);
@@ -189,6 +196,7 @@ void main() {
     expect(platform.requests, isEmpty);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(_key('lyrics-options-sheet'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -212,17 +220,20 @@ void main() {
       ).join('\n'),
     );
     await tester.pumpAndSettle();
-    final active = tester.widget<TextButton>(_key('lyrics-line-2'));
-    expect((active.child! as Text).style!.fontSize, 32);
-    expect(active.style!.foregroundColor!.resolve({}), Colors.white);
-    expect(active.style!.backgroundColor!.resolve({}), Colors.transparent);
+    expectNoMaterialWidgets();
+    final active = tester.widget<CupertinoButton>(_key('lyrics-line-2'));
+    expect((active.child as Text).style!.fontSize, 32);
+    expect((active.child as Text).style!.color, CupertinoColors.white);
+    expect(active.color, CupertinoColors.transparent);
     await tester.drag(_key('lyrics-synced-scroll'), const Offset(0, -100));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(_key('lyrics-follow'), findsOneWidget);
     await _tap(tester, 'lyrics-follow');
     expect(_key('lyrics-follow'), findsNothing);
     await tester.drag(_key('lyrics-synced-scroll'), const Offset(0, -70));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await _tap(tester, 'lyrics-line-3');
     expect(sought, const Duration(seconds: 3));
     expect(_key('lyrics-follow'), findsNothing);
@@ -253,6 +264,7 @@ void main() {
     await _tap(tester, 'lyrics-search');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(_key('lyrics-consent-dialog'), findsNothing);
     expect(platform.requests, isEmpty);
     expect(platform.writes, isEmpty);
@@ -319,8 +331,8 @@ void main() {
       expect(platform.writes, hasLength(1));
       expect(controller.document?.isSynced, isTrue);
       expect(_key('lyrics-candidates'), findsNothing);
-      final first = tester.widget<TextButton>(_key('lyrics-line-0'));
-      expect((first.child! as Text).style?.fontWeight, FontWeight.w700);
+      final first = tester.widget<CupertinoButton>(_key('lyrics-line-0'));
+      expect((first.child as Text).style?.fontWeight, FontWeight.w700);
       await _tap(tester, 'lyrics-line-1');
       expect(sought, const Duration(seconds: 5));
       expect(platform.requests, hasLength(1));
@@ -386,6 +398,7 @@ void main() {
       final controller = await _mount(tester, platform);
       await controller.importText('The test garden keeps its own clock');
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await _tap(tester, 'lyrics-search');
       await tester.ensureVisible(_key('lyrics-consent-confirm'));
       await tester.tap(_key('lyrics-consent-confirm'));
@@ -396,6 +409,7 @@ void main() {
       await _tap(tester, 'lyrics-cancel-search');
       platform.pending!.complete(platform.response);
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(controller.candidates, isEmpty);
       expect(controller.document?.text, 'The test garden keeps its own clock');
       expect(platform.writes, hasLength(1));
@@ -436,10 +450,14 @@ void main() {
     await _tap(tester, 'lyrics-candidate-701');
     controller.selectTrack(_track.copyWith(title: 'A new song'));
     await tester.pumpAndSettle();
-    final button = tester.widget<FilledButton>(_key('lyrics-preview-save'));
+    expectNoMaterialWidgets();
+    final button = tester.widget<CupertinoDialogAction>(
+      _key('lyrics-preview-save'),
+    );
     expect(button.onPressed, isNull);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(controller.document, isNull);
     expect(platform.writes, isEmpty);
   });
@@ -451,6 +469,7 @@ void main() {
       final controller = await _mount(tester, platform);
       await controller.importText('[00:01]虛構紙船向遠方');
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.text('虚构纸船向远方'), findsOneWidget);
       await _tap(tester, 'lyrics-script-original');
       expect(find.text('虛構紙船向遠方'), findsOneWidget);
@@ -502,7 +521,10 @@ void main() {
     });
     await _tap(tester, 'lyrics-search');
     expect(
-      tester.widget<TextField>(_key('lyrics-query-title')).controller!.text,
+      tester
+          .widget<CupertinoTextField>(_key('lyrics-query-title'))
+          .controller!
+          .text,
       'Edited title',
     );
     await _tap(tester, 'lyrics-consent-cancel');

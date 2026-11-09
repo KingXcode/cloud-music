@@ -7,8 +7,10 @@ import 'package:cloud_music/gateway/source_music_gateway.dart';
 import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'cupertino_test_helpers.dart';
 
 import 'drive_gateway_test.dart'
     show FakeDrivePlatform, FakeLocalGateway, apiClient;
@@ -35,10 +37,13 @@ void main() {
       await c.initialize();
       await tester.pumpWidget(MusicApp(controller: c));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await tester.tap(find.byKey(const Key('library-options')));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await tester.tap(find.byKey(const Key('music-sources')));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await tester.scrollUntilVisible(
         find.text('Google Drive'),
         120,
@@ -51,6 +56,7 @@ void main() {
       );
       await tester.tap(find.text('Google Drive'));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       await tester.scrollUntilVisible(
         find.text('尚未配置，暂时不能直接登录'),
         160,
@@ -72,14 +78,18 @@ void main() {
             )
             .first,
       );
-      final button = tester.widget<FilledButton>(
-        find.byKey(const Key('drive-connect')),
+      final button = tester.widget<CupertinoButton>(
+        find.descendant(
+          of: find.byKey(const Key('drive-connect')),
+          matching: find.byType(CupertinoButton),
+        ),
       );
       expect(button.onPressed, isNull);
       expect(platform.interactiveCount, 0);
       expect(tester.takeException(), isNull);
       await tester.tap(find.byTooltip('关闭音乐来源'));
       await tester.pumpAndSettle();
+      expectNoMaterialWidgets();
       expect(find.byTooltip('关闭音乐来源'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -103,10 +113,13 @@ void main() {
     await c.initialize();
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.tap(find.byKey(const Key('library-options')));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.tap(find.byKey(const Key('music-sources')));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.scrollUntilVisible(
       find.text('Google Drive'),
       120,
@@ -119,6 +132,7 @@ void main() {
     );
     await tester.tap(find.text('Google Drive'));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     await tester.scrollUntilVisible(
       find.byKey(const Key('drive-connect')),
       120,
@@ -142,6 +156,7 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('drive-connect')));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(drive.connected, isTrue);
     await tester.scrollUntilVisible(
       find.byKey(const Key('drive-use-folder')),
@@ -166,6 +181,7 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('drive-use-folder')));
     await tester.pumpAndSettle();
+    expectNoMaterialWidgets();
     expect(c.usingDrive, isTrue);
     expect(c.snapshot.tracks, hasLength(2));
     expect(find.byTooltip('关闭音乐来源'), findsNothing);

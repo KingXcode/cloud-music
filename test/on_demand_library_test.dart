@@ -1,6 +1,6 @@
 import 'package:cloud_music/models.dart';
 import 'package:cloud_music/ui/music_app.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'ui_music_app_test.dart' show FakeController;

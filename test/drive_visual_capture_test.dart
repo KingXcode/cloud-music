@@ -7,7 +7,7 @@ import 'library_filter_test.dart' show MemoryFilterStore;
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +33,14 @@ void main() {
         tester,
       ) async {
         await tester.runAsync(() async {
-          for (final family in ['Roboto', 'PingFang SC']) {
+          for (final family in [
+            'Roboto',
+            'PingFang SC',
+            '.SF Pro Text',
+            '.SF Pro Display',
+            'CupertinoSystemText',
+            'CupertinoSystemDisplay',
+          ]) {
             await (FontLoader(family)..addFont(
                   File('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc')
                       .readAsBytes()
@@ -44,12 +51,6 @@ void main() {
           await (FontLoader('packages/cupertino_icons/CupertinoIcons')..addFont(
                 File(
                   '${Platform.environment['PUB_CACHE']}/hosted/pub.dev/cupertino_icons-1.0.9/assets/CupertinoIcons.ttf',
-                ).readAsBytes().then((b) => ByteData.sublistView(b)),
-              ))
-              .load();
-          await (FontLoader('MaterialIcons')..addFont(
-                File(
-                  '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
                 ).readAsBytes().then((b) => ByteData.sublistView(b)),
               ))
               .load();
@@ -92,7 +93,7 @@ void main() {
                         style: TextStyle(
                           fontFamily: 'Roboto',
                           fontSize: 8,
-                          color: Colors.white,
+                          color: CupertinoColors.white,
                           decoration: TextDecoration.none,
                         ),
                       ),
@@ -118,6 +119,14 @@ void main() {
               )
               .first,
         );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.ancestor(
+            of: find.text('Google Drive'),
+            matching: find.byType(CupertinoListTile),
+          ),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Google Drive'));
         await tester.pumpAndSettle();
         Future<void> capture(String suffix) async {
@@ -156,7 +165,12 @@ void main() {
         if (!connected) {
           expect(
             tester
-                .widget<FilledButton>(find.byKey(const Key('drive-connect')))
+                .widget<CupertinoButton>(
+                  find.descendant(
+                    of: find.byKey(const Key('drive-connect')),
+                    matching: find.byType(CupertinoButton),
+                  ),
+                )
                 .onPressed,
             isNull,
           );
