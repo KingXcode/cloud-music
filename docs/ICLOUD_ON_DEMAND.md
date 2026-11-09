@@ -24,7 +24,7 @@
 
 支持 `showDirectoryPicker` 的浏览器只枚举名称和句柄，第一首立即显示，后续分批显示；只有点播才调用该文件的 `getFile()`。不把整库音频写入 IndexedDB，也不上传音频。播放准备等待有时限，取消、切歌和超时后会忽略迟到的结果。
 
-Safari 等目录输入回退，以及 iPhone/iPad 的文件多选，只能等系统选择器交回 File 列表后显示。**系统可能在交回选择结果前就下载文件，网页无法保证“完整列出所有未下载歌曲，点播时才开始下载”。** 本页不会为扫描主动读取音频内容；它无法控制选择器及 iCloud 文件提供器。刷新网页后，文件输入方式须重新选择，支持持久句柄的浏览器则尝试恢复已授权目录。
+Safari（含 iOS/iPadOS 18.4+）的目录输入回退，以及独立的文件多选，只能等系统选择器交回 File 列表后显示。**系统可能在交回选择结果前就下载文件，网页无法保证“完整列出所有未下载歌曲，点播时才开始下载”。** 本页不会为扫描主动读取音频内容；它无法控制选择器及 iCloud 文件提供器。刷新网页后，文件输入方式须重新选择，支持持久句柄的浏览器则尝试恢复已授权目录。
 
 ## 验证范围
 
@@ -37,6 +37,6 @@ Safari 等目录输入回退，以及 iPhone/iPad 的文件多选，只能等系
 2. 目录尚未同步或断网时刷新，不能清空已知歌曲或误报全部可用。
 3. 扫描中点播、快速切歌、下载中取消、超时、切换来源，不得播放旧请求。
 4. 下载后在“文件”或 Finder 中移除本地下载，再刷新检查状态。
-5. iPhone Safari 多选与 Mac Safari 目录选择，验证系统提前下载、取消、重试及重新打开页面的提示符合实际。
+5. iPhone Safari 18.4+ 目录选择、多选与 Mac Safari 目录选择，验证系统提前下载、取消、重试及重新打开页面的提示符合实际。
 
 平台依据：[Apple promised-item 属性](https://developer.apple.com/documentation/foundation/url/promiseditemresourcevalues(forkeys:))、[Apple metadata-only 协调](https://developer.apple.com/documentation/foundation/nsfilecoordinator/readingoptions/immediatelyavailablemetadataonly)、[Apple 按需下载](https://developer.apple.com/documentation/foundation/filemanager/startdownloadingubiquitousitem(at:))、[MDN 目录选择器](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)、[MDN 文件句柄读取](https://developer.mozilla.org/en-US/docs/Web/API/FileSystemFileHandle/getFile)。

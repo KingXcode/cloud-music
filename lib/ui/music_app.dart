@@ -12,10 +12,12 @@ import 'music_sources_sheet.dart';
 import '../updates/update_controller.dart';
 import 'update_panel.dart';
 import 'library_filter_sheet.dart';
+import 'library_options_sheet.dart';
+import 'music_import_sheet.dart';
 
-const _accent = Color(0xFFE83E59);
+const _accent = Color(0xFFD92E4B);
 const _ink = Color(0xFF202024);
-const _muted = Color(0xFF78787F);
+const _muted = Color(0xFF6F6F76);
 const _canvas = Color(0xFFF9F9FB);
 const _line = Color(0xFFE8E8ED);
 const _playerMuted = Color(0xFFCDC3C5);
@@ -62,6 +64,12 @@ class MusicApp extends StatelessWidget {
         ),
       ),
       sliderTheme: const SliderThemeData(trackHeight: 4),
+      bottomSheetTheme: const BottomSheetThemeData(
+        backgroundColor: Colors.white,
+        modalBackgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        dragHandleColor: _line,
+      ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
       ),
@@ -91,15 +99,22 @@ class _LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<_LibraryPage> {
   final _search = TextEditingController();
   final _searchFocus = FocusNode();
+  final _scroll = ScrollController();
+  double _savedOffset = 0;
   String _query = '';
   _LibrarySection _section = _LibrarySection.songs;
   String? _group;
-  bool _openingPlayer = false, _openingFilter = false;
+  bool _openingPlayer = false, _openingFilter = false, _openingOptions = false;
+  _LibrarySection _savedSection = _LibrarySection.songs;
+  String? _savedGroup;
+  String? _dismissedMessage;
+  bool _openingImport = false, _openingSources = false;
 
   @override
   void dispose() {
     _search.dispose();
     _searchFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -141,8 +156,69 @@ class _LibraryPageState extends State<_LibraryPage> {
     }
   }
 
+  Future<void> _addMusic() async {
+    final c = widget.controller;
+    if (c.isBusy || _openingImport) return;
+    if (!c.canScanDevice && (!c.canPickFiles || c.selectsFiles)) {
+      // Keep a direct user-gesture path for single-capability browsers.
+      await c.pickFolder();
+      return;
+    }
+    _openingImport = true;
+    _searchFocus.unfocus();
+    try {
+      await showMusicImport(context, c);
+    } finally {
+      _openingImport = false;
+    }
+  }
+
+  Future<void> _openSources() async {
+    if (_openingSources) return;
+    _openingSources = true;
+    try {
+      await showMusicSources(context, widget.controller);
+    } finally {
+      _openingSources = false;
+    }
+  }
+
+  Future<void> _openOptions() async {
+    if (_openingOptions) return;
+    _openingOptions = true;
+    _searchFocus.unfocus();
+    try {
+      final action = await showLibraryOptions(
+        context,
+        widget.controller,
+        hasUpdates: widget.updates != null,
+      );
+      if (!mounted || action == null) return;
+      switch (action) {
+        case LibraryOption.sources:
+          await _openSources();
+        case LibraryOption.filter:
+          await _openFilter();
+        case LibraryOption.updates:
+          if (widget.updates != null) {
+            await showAppUpdates(context, widget.updates!);
+          }
+        case LibraryOption.refresh:
+          await widget.controller.refresh();
+      }
+    } finally {
+      _openingOptions = false;
+    }
+  }
+
   void _select(_LibrarySection section) {
     setState(() {
+      if (section == _LibrarySection.search &&
+          _section != _LibrarySection.search) {
+        _savedOffset = _scroll.hasClients ? _scroll.offset : 0;
+        _savedSection = _section;
+        _savedGroup = _group;
+      }
       _section = section;
       _group = null;
       if (section != _LibrarySection.search) {
@@ -150,11 +226,27 @@ class _LibraryPageState extends State<_LibraryPage> {
         _search.clear();
       }
     });
+    _scrollTo(0);
     if (section == _LibrarySection.search) {
       _searchFocus.requestFocus();
     } else {
       _searchFocus.unfocus();
     }
+  }
+
+  void _returnToLibrary() {
+    if (_section != _LibrarySection.search) return;
+    _select(_savedSection);
+    setState(() => _group = _savedGroup);
+    _scrollTo(_savedOffset);
+  }
+
+  void _scrollTo(double offset) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scroll.hasClients) {
+        _scroll.jumpTo(offset.clamp(0, _scroll.position.maxScrollExtent));
+      }
+    });
   }
 
   @override
@@ -165,7 +257,6 @@ class _LibraryPageState extends State<_LibraryPage> {
       final s = c.snapshot;
       final visible = c.libraryFilter.visibleTracks(s.tracks);
       final hidden = s.tracks.length - visible.length;
-      final unknown = s.tracks.where((t) => t.duration <= Duration.zero).length;
       final tracks = visible.where((t) {
         final matches = '${t.title} ${t.artist} ${t.album} ${t.relativePath}'
             .toLowerCase()
@@ -175,399 +266,369 @@ class _LibraryPageState extends State<_LibraryPage> {
                 (_section == _LibrarySection.albums ? _album(t) : _artist(t)) ==
                     _group);
       }).toList();
-      return Scaffold(
-        body: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 750;
-              final short = constraints.maxHeight < 500;
-              return Row(
-                children: [
-                  if (wide) _sidebar(s, short),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        if (widget.updates != null)
-                          UpdateBanner(controller: widget.updates!),
-                        if (c.error != null)
-                          _Notice(
-                            text: c.error!,
-                            error: true,
-                            onClose: c.clearError,
-                          ),
-                        if (s.isLoading)
-                          _Notice(
-                            text: s.message ?? '正在准备音频，云端文件可能需要下载…',
-                            onClose: c.cancelLoading,
-                            closeLabel: '取消加载',
-                          ),
-                        if (!s.isLoading && s.message != null)
-                          _Notice(text: s.message!),
-                        Expanded(
-                          child: CustomScrollView(
-                            key: const Key('library-scroll'),
-                            slivers: [
-                              SliverToBoxAdapter(
-                                child: Padding(
-                                  padding: EdgeInsets.fromLTRB(
-                                    wide ? 40 : 22,
-                                    short ? 12 : 28,
-                                    wide ? 32 : 14,
-                                    8,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (!short)
-                                        const Text(
-                                          '云听',
-                                          style: TextStyle(
-                                            color: _accent,
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 14,
-                                            letterSpacing: 2,
-                                          ),
-                                        ),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              _section == _LibrarySection.search
-                                                  ? '搜索'
-                                                  : '音乐资料库',
-                                              style: TextStyle(
-                                                fontSize: short ? 27 : 34,
-                                                fontWeight: FontWeight.w800,
-                                                letterSpacing: -1.4,
-                                              ),
-                                            ),
-                                          ),
-                                          IconButton(
-                                            tooltip: s.selectsFiles
-                                                ? '选择或更换音乐文件'
-                                                : '选择或更换音乐文件夹',
-                                            onPressed: c.isBusy
-                                                ? null
-                                                : c.pickFolder,
-                                            color: _accent,
-                                            icon: const Icon(
-                                              CupertinoIcons.add_circled,
-                                              size: 27,
-                                            ),
-                                          ),
-                                          IconButton(
-                                            tooltip: s.selectsFiles
-                                                ? '重新选择音乐文件'
-                                                : '刷新资料库',
-                                            onPressed:
-                                                s.folderName == null || c.isBusy
-                                                ? null
-                                                : c.refresh,
-                                            color: _accent,
-                                            icon: const Icon(
-                                              CupertinoIcons.arrow_clockwise,
-                                              size: 23,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      if (!short)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 2,
-                                            bottom: 20,
-                                          ),
-                                          child: Text(
-                                            s.folderName == null
-                                                ? '好音乐，就在你身边。'
-                                                : '${s.folderName} · ${visible.length} 首歌曲${hidden > 0 ? '（已隐藏 $hidden 首）' : ''}',
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: _muted,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ),
-                                      Wrap(
-                                        spacing: 8,
-                                        crossAxisAlignment:
-                                            WrapCrossAlignment.center,
-                                        children: [
-                                          TextButton.icon(
-                                            key: const Key('music-sources'),
-                                            onPressed: () =>
-                                                showMusicSources(context, c),
-                                            icon: Icon(
-                                              s.sourceKind == 'googleDrive'
-                                                  ? Icons.cloud_outlined
-                                                  : Icons.folder_outlined,
-                                              size: 18,
-                                            ),
-                                            label: Text(
-                                              s.sourceKind == 'googleDrive'
-                                                  ? 'Google Drive · 管理音乐来源'
-                                                  : '系统文件 · 添加网盘来源',
-                                            ),
-                                          ),
-                                          TextButton.icon(
-                                            key: const Key('library-filter'),
-                                            onPressed: !c.initialized
-                                                ? null
-                                                : _openFilter,
-                                            icon: const Icon(
-                                              Icons.filter_alt_outlined,
-                                              size: 18,
-                                            ),
-                                            label: Text(
-                                              c.libraryFilter.enabled
-                                                  ? '短音频过滤 · ${c.libraryFilter.minimumSeconds} 秒'
-                                                  : '短音频过滤 · 已关闭',
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      if (c.libraryFilter.enabled &&
-                                          s.tracks.isNotEmpty)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 8,
-                                          ),
-                                          child: Text(
-                                            '已隐藏 $hidden 首短音频${unknown > 0 ? ' · $unknown 首时长未知，暂时保留' : ''}',
-                                            key: const Key(
-                                              'library-filter-summary',
-                                            ),
-                                            style: const TextStyle(
-                                              color: _muted,
-                                              fontSize: 12,
-                                              height: 1.5,
-                                            ),
-                                          ),
-                                        ),
-                                      if (c.libraryFilter.notice != null)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 8,
-                                          ),
-                                          child: Text(
-                                            c.libraryFilter.notice!,
-                                            style: const TextStyle(
-                                              color: _muted,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ),
-                                      if (widget.updates != null)
-                                        Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: TextButton.icon(
-                                            key: const Key('app-updates'),
-                                            onPressed: () => showAppUpdates(
-                                              context,
-                                              widget.updates!,
-                                            ),
-                                            icon: const Icon(
-                                              Icons.system_update_alt,
-                                              size: 18,
-                                            ),
-                                            label: const Text('应用更新'),
-                                          ),
-                                        ),
-                                      if (s.sourceKind == 'web' ||
-                                          s.sourceKind == 'apple')
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: 12,
-                                          ),
-                                          child: Text(
-                                            s.sourceKind == 'web'
-                                                ? '本页只在播放时读取音频。网页无法判断 iCloud 下载状态；系统可能在选择文件时先下载。'
-                                                : '先显示文件名和下载状态，点歌才下载。首次列表取决于系统已同步的目录信息。',
-                                            key: const Key(
-                                              'source-loading-help',
-                                            ),
-                                            style: const TextStyle(
-                                              color: _muted,
-                                              fontSize: 12,
-                                              height: 1.5,
-                                            ),
-                                          ),
-                                        ),
-                                      TextField(
-                                        key: const Key('library-search'),
-                                        controller: _search,
-                                        focusNode: _searchFocus,
-                                        onChanged: (value) => setState(() {
-                                          _query = value;
-                                          _group = null;
-                                        }),
-                                        decoration: InputDecoration(
-                                          hintText: '搜索歌曲、歌手或专辑',
-                                          prefixIcon: const Icon(
-                                            CupertinoIcons.search,
-                                            size: 21,
-                                          ),
-                                          suffixIcon: _query.isEmpty
-                                              ? null
-                                              : IconButton(
-                                                  tooltip: '清除搜索',
-                                                  onPressed: () {
-                                                    _search.clear();
-                                                    setState(() => _query = '');
-                                                  },
-                                                  icon: const Icon(
-                                                    CupertinoIcons
-                                                        .clear_circled_solid,
-                                                    size: 19,
-                                                  ),
-                                                ),
-                                        ),
-                                      ),
-                                      if (!wide &&
-                                          _section != _LibrarySection.search)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 14,
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              for (final section in [
-                                                _LibrarySection.songs,
-                                                _LibrarySection.albums,
-                                                _LibrarySection.artists,
-                                              ])
-                                                Expanded(
-                                                  child: _CategoryButton(
-                                                    label: _label(section),
-                                                    selected:
-                                                        _section == section,
-                                                    onTap: () =>
-                                                        _select(section),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                        ),
-                                      if (s.isScanning)
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 12,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              const LinearProgressIndicator(),
-                                              const SizedBox(height: 6),
-                                              Text(
-                                                '正在列出歌曲 · 已显示 ${visible.length} 首${hidden > 0 ? '，已隐藏 $hidden 首' : ''}',
-                                                style: const TextStyle(
-                                                  color: _muted,
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
+      return PopScope(
+        canPop: _section != _LibrarySection.search && _group == null,
+        onPopInvokedWithResult: (didPop, result) {
+          if (didPop) return;
+          if (_section == _LibrarySection.search) {
+            _returnToLibrary();
+          } else if (_group != null) {
+            setState(() => _group = null);
+          }
+        },
+        child: Scaffold(
+          body: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final wide = constraints.maxWidth >= 750;
+                final short = constraints.maxHeight < 500;
+                return Row(
+                  children: [
+                    if (wide) _sidebar(s, short),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          if (widget.updates != null)
+                            UpdateBanner(controller: widget.updates!),
+                          if (c.usingDrive && c.isLocalImportScanning)
+                            Container(
+                              key: const Key('staged-import-progress'),
+                              color: _canvas,
+                              padding: const EdgeInsets.only(
+                                left: 20,
+                                right: 8,
                               ),
-                              if (!c.initialized)
-                                const SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: Center(
-                                    child: CircularProgressIndicator(),
+                              child: Row(
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
                                   ),
-                                )
-                              else if (s.tracks.isEmpty)
-                                SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: _EmptyLibrary(
-                                    hasFolder: s.folderName != null,
-                                    scanning: s.isScanning,
-                                    filesOnly: s.selectsFiles,
-                                    busy: c.isBusy,
-                                    onPick: c.pickFolder,
-                                    onRefresh: c.refresh,
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      c.localImportMessage ?? '正在导入音乐…',
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: _muted,
+                                      ),
+                                    ),
                                   ),
-                                )
-                              else ...[
+                                  TextButton(
+                                    key: const Key('cancel-local-import'),
+                                    onPressed: c.cancelLocalImport,
+                                    child: const Text('取消'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (c.error != null)
+                            _Notice(
+                              text: c.error!,
+                              error: true,
+                              onClose: c.clearError,
+                            ),
+                          if (s.isLoading)
+                            _Notice(
+                              text: s.message ?? '正在准备音频，云端文件可能需要下载…',
+                              onClose: c.cancelLoading,
+                              closeLabel: '取消加载',
+                            ),
+                          if (!s.isLoading &&
+                              s.message != null &&
+                              s.message != _dismissedMessage)
+                            _LibraryStatus(
+                              message: s.message!,
+                              onDismiss: () =>
+                                  setState(() => _dismissedMessage = s.message),
+                            ),
+                          Expanded(
+                            child: CustomScrollView(
+                              key: const Key('library-scroll'),
+                              controller: _scroll,
+                              slivers: [
                                 SliverToBoxAdapter(
                                   child: Padding(
                                     padding: EdgeInsets.fromLTRB(
                                       wide ? 40 : 22,
-                                      14,
-                                      wide ? 40 : 22,
-                                      12,
+                                      short ? 8 : 18,
+                                      wide ? 32 : 14,
+                                      8,
                                     ),
                                     child: Column(
                                       crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        if (_group != null)
-                                          Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: TextButton.icon(
-                                              onPressed: () =>
-                                                  setState(() => _group = null),
-                                              icon: const Icon(
-                                                CupertinoIcons.chevron_back,
-                                                size: 15,
-                                              ),
-                                              label: Text(_label(_section)),
-                                            ),
-                                          ),
                                         Row(
                                           children: [
                                             Expanded(
                                               child: Text(
-                                                _group ??
-                                                    (_section ==
-                                                            _LibrarySection
-                                                                .search
-                                                        ? '搜索结果'
-                                                        : _label(_section)),
-                                                style: const TextStyle(
-                                                  fontSize: 22,
-                                                  fontWeight: FontWeight.w700,
+                                                _section ==
+                                                        _LibrarySection.search
+                                                    ? '搜索'
+                                                    : '音乐资料库',
+                                                style: TextStyle(
+                                                  fontSize: short ? 25 : 30,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: -1,
                                                 ),
                                               ),
                                             ),
-                                            Text(
-                                              '${tracks.length} 首',
-                                              style: const TextStyle(
-                                                color: _muted,
-                                                fontSize: 13,
+                                            if (_section !=
+                                                _LibrarySection.search)
+                                              IconButton(
+                                                tooltip: c.selectsFiles
+                                                    ? '选择或更换音乐文件'
+                                                    : '选择或更换音乐文件夹',
+                                                onPressed: c.isBusy
+                                                    ? null
+                                                    : _addMusic,
+                                                color: _accent,
+                                                icon: const Icon(
+                                                  CupertinoIcons.add,
+                                                  size: 26,
+                                                ),
+                                              ),
+                                            IconButton(
+                                              key: const Key('library-options'),
+                                              tooltip: '资料库选项',
+                                              onPressed: _openOptions,
+                                              color: _accent,
+                                              icon: const Icon(
+                                                CupertinoIcons.ellipsis_circle,
+                                                size: 25,
                                               ),
                                             ),
                                           ],
                                         ),
-                                        if (tracks.isNotEmpty &&
-                                            (_section ==
-                                                    _LibrarySection.songs ||
-                                                _group != null)) ...[
+                                        if (_section ==
+                                            _LibrarySection.search) ...[
                                           const SizedBox(height: 14),
+                                          TextField(
+                                            key: const Key('library-search'),
+                                            controller: _search,
+                                            focusNode: _searchFocus,
+                                            textInputAction:
+                                                TextInputAction.search,
+                                            onSubmitted: (_) =>
+                                                _searchFocus.unfocus(),
+                                            onChanged: (value) => setState(() {
+                                              _query = value;
+                                              _group = null;
+                                            }),
+                                            decoration: InputDecoration(
+                                              hintText: '歌曲、歌手或专辑',
+                                              prefixIcon: const Icon(
+                                                CupertinoIcons.search,
+                                                size: 21,
+                                              ),
+                                              suffixIcon: _query.isEmpty
+                                                  ? null
+                                                  : IconButton(
+                                                      tooltip: '清除搜索',
+                                                      onPressed: () {
+                                                        _search.clear();
+                                                        setState(
+                                                          () => _query = '',
+                                                        );
+                                                        _searchFocus
+                                                            .requestFocus();
+                                                      },
+                                                      icon: const Icon(
+                                                        CupertinoIcons
+                                                            .clear_circled_solid,
+                                                        size: 19,
+                                                      ),
+                                                    ),
+                                            ),
+                                          ),
+                                        ],
+                                        if (!wide &&
+                                            s.tracks.isNotEmpty &&
+                                            _section != _LibrarySection.search)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 12,
+                                            ),
+                                            child: Container(
+                                              padding: const EdgeInsets.all(3),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF2F2F5),
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  for (final section in [
+                                                    _LibrarySection.songs,
+                                                    _LibrarySection.albums,
+                                                    _LibrarySection.artists,
+                                                  ])
+                                                    Expanded(
+                                                      child: _CategoryButton(
+                                                        label: _label(section),
+                                                        selected:
+                                                            _section == section,
+                                                        onTap: () =>
+                                                            _select(section),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        if (s.isScanning)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 12,
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                const LinearProgressIndicator(),
+                                                const SizedBox(height: 6),
+                                                Text(
+                                                  '正在列出歌曲 · 已显示 ${visible.length} 首',
+                                                  style: const TextStyle(
+                                                    color: _muted,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                                if (s.sourceKind == 'android')
+                                                  TextButton(
+                                                    key: const Key(
+                                                      'cancel-library-scan',
+                                                    ),
+                                                    onPressed: c.cancelLoading,
+                                                    child: const Text('取消扫描'),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (!c.initialized)
+                                  const SliverFillRemaining(
+                                    hasScrollBody: false,
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
+                                    ),
+                                  )
+                                else if (s.tracks.isEmpty)
+                                  SliverFillRemaining(
+                                    hasScrollBody: false,
+                                    child: _EmptyLibrary(
+                                      hasFolder: s.folderName != null,
+                                      scanning: s.isScanning,
+                                      filesOnly: c.selectsFiles,
+                                      busy: c.isBusy,
+                                      onPick: c.pickFolder,
+                                      onRefresh: c.refresh,
+                                      onSources: _openSources,
+                                      onScan: c.canScanDevice
+                                          ? c.scanDevice
+                                          : null,
+                                      onPickFiles:
+                                          c.canPickFiles && !c.selectsFiles
+                                          ? c.pickFiles
+                                          : null,
+                                    ),
+                                  )
+                                else ...[
+                                  SliverToBoxAdapter(
+                                    child: Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        wide ? 40 : 22,
+                                        0,
+                                        wide ? 40 : 22,
+                                        4,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          if (_group != null)
+                                            Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: TextButton.icon(
+                                                onPressed: () => setState(
+                                                  () => _group = null,
+                                                ),
+                                                icon: const Icon(
+                                                  CupertinoIcons.chevron_back,
+                                                  size: 15,
+                                                ),
+                                                label: Text(_label(_section)),
+                                              ),
+                                            ),
+                                          if (_group != null)
+                                            Text(
+                                              _group!,
+                                              style: const TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
                                           Row(
                                             children: [
                                               Expanded(
-                                                child: _LibraryPlayButton(
-                                                  icon:
-                                                      CupertinoIcons.play_fill,
-                                                  label: '播放',
+                                                child: Text(
+                                                  _section ==
+                                                          _LibrarySection.search
+                                                      ? '搜索结果 · ${tracks.length} 首'
+                                                      : '${tracks.length} 首歌曲',
+                                                  key: const Key(
+                                                    'library-count',
+                                                  ),
+                                                  style: const TextStyle(
+                                                    color: _muted,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (hidden > 0)
+                                                IconButton(
+                                                  key: const Key(
+                                                    'hidden-tracks-shortcut',
+                                                  ),
+                                                  tooltip:
+                                                      '已隐藏 $hidden 首短音频，调整过滤',
+                                                  onPressed: _openFilter,
+                                                  color: _muted,
+                                                  icon: const Icon(
+                                                    CupertinoIcons
+                                                        .line_horizontal_3_decrease,
+                                                    size: 20,
+                                                  ),
+                                                ),
+                                              if (tracks.isNotEmpty &&
+                                                  (_section ==
+                                                          _LibrarySection
+                                                              .songs ||
+                                                      _group != null)) ...[
+                                                IconButton(
+                                                  tooltip: '播放全部',
+                                                  color: _accent,
                                                   onPressed: () async {
                                                     await c.setShuffle(false);
                                                     await c.play(tracks.first);
                                                   },
+                                                  icon: const Icon(
+                                                    CupertinoIcons.play_fill,
+                                                    size: 22,
+                                                  ),
                                                 ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: _LibraryPlayButton(
-                                                  icon: CupertinoIcons.shuffle,
-                                                  label: '随机播放',
+                                                IconButton(
+                                                  tooltip: '随机播放',
+                                                  color: _accent,
                                                   onPressed: () async {
                                                     await c.setShuffle(true);
                                                     await c.play(
@@ -577,74 +638,81 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                           )],
                                                     );
                                                   },
+                                                  icon: const Icon(
+                                                    CupertinoIcons.shuffle,
+                                                    size: 24,
+                                                  ),
                                                 ),
-                                              ),
+                                              ],
                                             ],
                                           ),
                                         ],
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                if (tracks.isEmpty)
-                                  SliverFillRemaining(
-                                    hasScrollBody: false,
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Text(
-                                            visible.isEmpty && hidden > 0
-                                                ? '短音频已隐藏'
-                                                : '没有找到匹配的歌曲',
-                                            style: const TextStyle(
-                                              color: _muted,
-                                            ),
-                                          ),
-                                          if (hidden > 0)
-                                            TextButton(
-                                              onPressed: _openFilter,
-                                              child: const Text('调整过滤条件'),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                else if ((_section == _LibrarySection.albums ||
-                                        _section == _LibrarySection.artists) &&
-                                    _group == null)
-                                  _groups(tracks, wide)
-                                else
-                                  SliverPadding(
-                                    padding: EdgeInsets.fromLTRB(
-                                      wide ? 28 : 10,
-                                      0,
-                                      wide ? 28 : 10,
-                                      24,
-                                    ),
-                                    sliver: SliverList.builder(
-                                      itemCount: tracks.length,
-                                      itemBuilder: (context, i) => _TrackRow(
-                                        track: tracks[i],
-                                        selected:
-                                            tracks[i].id == s.currentTrackId,
-                                        playing: s.isPlaying,
-                                        onTap: () => c.play(tracks[i]),
                                       ),
                                     ),
                                   ),
+                                  if (tracks.isEmpty)
+                                    SliverFillRemaining(
+                                      hasScrollBody: false,
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              visible.isEmpty && hidden > 0
+                                                  ? '短音频已隐藏'
+                                                  : '没有找到匹配的歌曲',
+                                              style: const TextStyle(
+                                                color: _muted,
+                                              ),
+                                            ),
+                                            if (hidden > 0)
+                                              TextButton(
+                                                onPressed: _openFilter,
+                                                child: const Text('调整过滤条件'),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                  else if ((_section ==
+                                              _LibrarySection.albums ||
+                                          _section ==
+                                              _LibrarySection.artists) &&
+                                      _group == null)
+                                    _groups(tracks, wide)
+                                  else
+                                    SliverPadding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        wide ? 28 : 10,
+                                        0,
+                                        wide ? 28 : 10,
+                                        24,
+                                      ),
+                                      sliver: SliverList.builder(
+                                        itemCount: tracks.length,
+                                        itemBuilder: (context, i) => _TrackRow(
+                                          track: tracks[i],
+                                          selected:
+                                              tracks[i].id == s.currentTrackId,
+                                          playing: s.isPlaying,
+                                          onTap: () => c.play(tracks[i]),
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
-                        ),
-                        _MiniPlayer(controller: c, onOpen: _openPlayer),
-                        if (!wide) _bottomNavigation(short),
-                      ],
+                          if (s.currentTrack != null)
+                            _MiniPlayer(controller: c, onOpen: _openPlayer),
+                          if (!wide) _bottomNavigation(short),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              );
-            },
+                  ],
+                );
+              },
+            ),
           ),
         ),
       );
@@ -750,7 +818,7 @@ class _LibraryPageState extends State<_LibraryPage> {
             icon: CupertinoIcons.music_albums,
             selected: _section != _LibrarySection.search,
             compact: short,
-            onTap: () => _select(_LibrarySection.songs),
+            onTap: _returnToLibrary,
           ),
         ),
         Expanded(
@@ -789,7 +857,10 @@ class _LibraryPageState extends State<_LibraryPage> {
         itemCount: names.length,
         itemBuilder: (context, i) => InkWell(
           borderRadius: BorderRadius.circular(12),
-          onTap: () => setState(() => _group = names[i]),
+          onTap: () {
+            setState(() => _group = names[i]);
+            _scrollTo(0);
+          },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -893,36 +964,12 @@ class _CategoryButton extends StatelessWidget {
     child: TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        backgroundColor: selected
-            ? const Color(0xFFFCE8ED)
-            : Colors.transparent,
+        backgroundColor: selected ? Colors.white : Colors.transparent,
         foregroundColor: selected ? _accent : _muted,
         minimumSize: const Size(48, 44),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-    ),
-  );
-}
-
-class _LibraryPlayButton extends StatelessWidget {
-  const _LibraryPlayButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-  @override
-  Widget build(BuildContext context) => TextButton.icon(
-    onPressed: onPressed,
-    icon: Icon(icon, size: 19),
-    label: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-    style: TextButton.styleFrom(
-      backgroundColor: const Color(0xFFF1F1F4),
-      minimumSize: const Size(48, 48),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
     ),
   );
 }
@@ -935,88 +982,122 @@ class _EmptyLibrary extends StatelessWidget {
     required this.busy,
     required this.onPick,
     required this.onRefresh,
+    required this.onSources,
+    this.onScan,
+    this.onPickFiles,
   });
   final bool hasFolder, filesOnly, busy, scanning;
-  final VoidCallback onPick, onRefresh;
+  final VoidCallback onPick, onRefresh, onSources;
+  final VoidCallback? onScan, onPickFiles;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 112,
-          height: 112,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFCE8ED),
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: const Icon(
-            CupertinoIcons.music_note_2,
-            size: 56,
-            color: _accent,
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          scanning
-              ? '正在读取目录'
-              : hasFolder
-              ? '这里还没有音乐'
-              : '你的音乐，不必搬家',
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -.6,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 390),
-          child: Text(
+  Widget build(BuildContext context) {
+    final largeText = MediaQuery.textScalerOf(context).scale(14) > 20;
+    final compact = largeText || MediaQuery.sizeOf(context).height < 700;
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: 28,
+        vertical: compact ? 16 : 28,
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          if (!largeText)
+            Container(
+              width: compact ? 80 : 112,
+              height: compact ? 80 : 112,
+              decoration: BoxDecoration(
+                color: const Color(0xFFFCE8ED),
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: const Icon(
+                CupertinoIcons.music_note_2,
+                size: 56,
+                color: _accent,
+              ),
+            ),
+          if (!largeText) SizedBox(height: compact ? 16 : 24),
+          Text(
             scanning
-                ? '目录信息就绪后会陆续显示歌曲，无需等待音频下载。'
-                : filesOnly
-                ? '在“文件”中打开音乐所在位置，可多选歌曲。\n刷新网页后需重新选择，音频不会上传。'
+                ? '正在读取目录'
                 : hasFolder
-                ? '将音频放进所选文件夹后刷新，或选择另一个文件夹。'
-                : '连接 iCloud Drive 或设备上的音乐文件夹。\n聆听原文件，把空间留给喜欢的音乐。',
+                ? '这里还没有音乐'
+                : '你的音乐，不必搬家',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: _muted, height: 1.7, fontSize: 14),
+            style: TextStyle(
+              fontSize: compact ? 22 : 24,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.6,
+            ),
           ),
-        ),
-        const SizedBox(height: 24),
-        FilledButton.icon(
-          onPressed: busy ? null : onPick,
-          icon: Icon(
-            filesOnly ? CupertinoIcons.music_note : CupertinoIcons.folder,
-            size: 20,
+          const SizedBox(height: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 390),
+            child: Text(
+              scanning
+                  ? '目录信息就绪后会陆续显示歌曲，无需等待音频下载。'
+                  : compact && !hasFolder
+                  ? (filesOnly ? '多选音乐文件，开始聆听。' : '选择音乐文件夹，开始聆听。')
+                  : onScan != null && !hasFolder
+                  ? '扫描本机音乐，或选择设备、U 盘上的音乐文件夹。'
+                  : filesOnly
+                  ? '在“文件”中打开音乐所在位置，可多选歌曲。\n刷新网页后需重新选择，音频不会上传。'
+                  : hasFolder
+                  ? '将音频放进所选文件夹后刷新，或选择另一个文件夹。'
+                  : '连接 iCloud Drive 或设备上的音乐文件夹。\n聆听原文件，把空间留给喜欢的音乐。',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _muted, height: 1.5, fontSize: 14),
+            ),
           ),
-          label: Text(
-            filesOnly
-                ? '选择音乐文件（可多选）'
-                : hasFolder
-                ? '更换音乐文件夹'
-                : '选择音乐文件夹',
+          SizedBox(height: compact ? 16 : 24),
+          FilledButton.icon(
+            onPressed: busy ? null : onPick,
+            icon: Icon(
+              filesOnly ? CupertinoIcons.music_note : CupertinoIcons.folder,
+              size: 20,
+            ),
+            label: Text(
+              filesOnly
+                  ? '选择音乐文件（可多选）'
+                  : hasFolder
+                  ? '更换音乐文件夹'
+                  : '选择音乐文件夹',
+            ),
+            style: FilledButton.styleFrom(minimumSize: const Size(220, 52)),
           ),
-          style: FilledButton.styleFrom(minimumSize: const Size(220, 52)),
-        ),
-        if (hasFolder)
-          TextButton.icon(
-            onPressed: busy ? null : onRefresh,
-            icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
-            label: Text(filesOnly ? '重新选择音乐文件' : '刷新资料库'),
+          if (hasFolder)
+            TextButton.icon(
+              onPressed: busy ? null : onRefresh,
+              icon: const Icon(CupertinoIcons.arrow_clockwise, size: 18),
+              label: Text(filesOnly ? '重新选择音乐文件' : '刷新资料库'),
+            ),
+          if (onScan != null)
+            TextButton.icon(
+              key: const Key('empty-scan-device'),
+              onPressed: busy ? null : onScan,
+              icon: const Icon(CupertinoIcons.music_note_list, size: 20),
+              label: const Text('扫描本机音乐'),
+            ),
+          if (onPickFiles != null)
+            TextButton(
+              key: const Key('empty-pick-files'),
+              onPressed: busy ? null : onPickFiles,
+              child: const Text('或选择多个音乐文件'),
+            ),
+          TextButton(
+            key: const Key('empty-music-sources'),
+            onPressed: busy ? null : onSources,
+            child: const Text('连接其他音乐来源'),
           ),
-        const SizedBox(height: 16),
-        const Text(
-          '云端文件播放前需要联网下载',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 11, color: _muted),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 8),
+          const Text(
+            '原文件播放 · 音频不上传',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: _muted),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TrackRow extends StatelessWidget {
@@ -2087,6 +2168,69 @@ class _PlayerBackdrop extends StatelessWidget {
         ),
       ),
     ],
+  );
+}
+
+class _LibraryStatus extends StatelessWidget {
+  const _LibraryStatus({required this.message, required this.onDismiss});
+  final String message;
+  final VoidCallback onDismiss;
+  @override
+  Widget build(BuildContext context) => Material(
+    color: _canvas,
+    child: Row(
+      children: [
+        Expanded(
+          child: InkWell(
+            key: const Key('library-status-details'),
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('资料库提示'),
+                content: SingleChildScrollView(child: Text(message)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('知道了'),
+                  ),
+                ],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 4, 12),
+              child: Row(
+                children: [
+                  const Icon(
+                    CupertinoIcons.info_circle,
+                    size: 18,
+                    color: _muted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      message,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: _muted),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    '详情',
+                    style: TextStyle(fontSize: 12, color: _accent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: '关闭资料库提示',
+          onPressed: onDismiss,
+          icon: const Icon(CupertinoIcons.xmark, size: 16),
+        ),
+      ],
+    ),
   );
 }
 

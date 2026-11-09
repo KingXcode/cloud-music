@@ -1,3 +1,4 @@
+import 'package:cloud_music/drive/drive_gateway.dart';
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_music/models.dart';
@@ -20,8 +21,43 @@ class FakeController extends ChangeNotifier implements MusicController {
   @override
   bool initialized = true;
   @override
-  bool get isBusy => snapshot.isLoading || snapshot.isScanning;
+  bool get isBusy =>
+      snapshot.isLoading || snapshot.isScanning || isLocalImportScanning;
   String? playedId;
+  @override
+  bool get canPickFiles => snapshot.canPickFiles;
+  @override
+  bool get canScanDevice => snapshot.canScanDevice;
+  @override
+  bool get selectsFiles => snapshot.selectsFiles;
+  @override
+  DriveGateway? get drive => null;
+  @override
+  bool usingDrive = false;
+  @override
+  bool isLocalImportScanning = false;
+  @override
+  String? localImportMessage;
+  int localImportCancelled = 0;
+  @override
+  Future<void> cancelLocalImport() async {
+    localImportCancelled++;
+    isLocalImportScanning = false;
+    notifyListeners();
+  }
+
+  int pickedFiles = 0;
+  int scans = 0;
+  @override
+  Future<void> pickFiles() async {
+    pickedFiles++;
+  }
+
+  @override
+  Future<void> scanDevice() async {
+    scans++;
+  }
+
   int picked = 0;
   int cancelled = 0;
   Duration? sought;
@@ -124,6 +160,8 @@ void main() {
         c.notifyListeners();
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
+        await tester.tap(find.text('搜索').first);
+        await tester.pumpAndSettle();
         await tester.tap(find.byType(TextField));
         await tester.enterText(find.byType(TextField), '夜色');
         await tester.pumpAndSettle();
@@ -157,7 +195,7 @@ void main() {
         expect(tester.takeException(), isNull);
         await tester.tap(find.byTooltip('返回资料库'));
         await tester.pumpAndSettle();
-        expect(find.text('音乐资料库'), findsOneWidget);
+        expect(find.byKey(const Key('library-search')), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

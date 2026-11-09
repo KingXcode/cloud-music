@@ -51,9 +51,9 @@ void main() {
       const LibrarySnapshot(),
       lyrics: LyricsController(platform: FakeLyricsPlatform()),
     );
-    Future<void> capture(String name) async {
+    Future<void> capture(String name, {bool settle = true}) async {
       await tester.pump(const Duration(seconds: 1));
-      await tester.pumpAndSettle();
+      if (settle) await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       (boundary.currentContext!.findRenderObject() as RenderRepaintBoundary)
           .markNeedsPaint();
@@ -107,6 +107,49 @@ void main() {
       ),
     );
     await capture('phone-empty');
+    // Synthetic fixture matching the populated, idle web-library scenario.
+    c.snapshot = LibrarySnapshot(
+      sourceKind: 'web',
+      canPickFiles: true,
+      folderName: '视觉测试音乐目录 · 非用户资料',
+      message: '测试提示：浏览器只会在播放时读取音频，网页无法判断 iCloud 下载状态。文件提供方可能需要先下载音频，若无法读取请检查网络并重新选择来源。',
+      tracks: List.generate(
+        545,
+        (i) => Track(
+          id: 'visual-only-$i',
+          title: '测试歌曲 ${(i + 1).toString().padLeft(3, '0')}',
+          artist: '视觉测试歌手',
+          album: '测试专辑',
+          duration: const Duration(minutes: 3),
+          availability: TrackAvailability.unloaded,
+        ),
+      ),
+    );
+    c.notifyListeners();
+    await capture('phone-web-idle-545');
+    expect(find.byKey(const Key('open-player')), findsNothing);
+    await tester.tap(find.byKey(const Key('library-options')));
+    await capture('phone-web-library-options');
+    await tester.tap(find.byTooltip('关闭资料库选项'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('选择或更换音乐文件夹'));
+    await capture('phone-web-import-chooser');
+    await tester.tap(find.byTooltip('关闭添加音乐'));
+    await tester.pumpAndSettle();
+    tester.view.physicalSize = const Size(1440, 900);
+    await capture('desktop-web-idle-545');
+    tester.view.physicalSize = const Size(390, 844);
+    c.snapshot = const LibrarySnapshot(
+      sourceKind: 'android',
+      canScanDevice: true,
+      canPickFiles: true,
+    );
+    c.notifyListeners();
+    await capture('phone-android-empty');
+    await tester.tap(find.byTooltip('选择或更换音乐文件夹'));
+    await capture('phone-android-import-chooser');
+    await tester.tap(find.byTooltip('关闭添加音乐'));
+    await tester.pumpAndSettle();
     c.snapshot = const LibrarySnapshot(
       folderName: '测试音乐文件夹',
       tracks: [
@@ -156,6 +199,27 @@ void main() {
     );
     c.notifyListeners();
     await capture('phone-library');
+    final activeSnapshot = c.snapshot;
+    c.snapshot = LibrarySnapshot(
+      sourceKind: 'googleDrive',
+      folderName: '测试 Drive 音乐目录',
+      tracks: activeSnapshot.tracks,
+      currentTrackId: activeSnapshot.currentTrackId,
+      isPlaying: true,
+      duration: activeSnapshot.duration,
+      position: activeSnapshot.position,
+    );
+    c.usingDrive = true;
+    c.isLocalImportScanning = true;
+    c.localImportMessage = '正在扫描本机音乐，现有资料库继续播放';
+    c.notifyListeners();
+    await capture('phone-drive-staged-scan', settle: false);
+    c.isLocalImportScanning = false;
+    c.usingDrive = false;
+    c.localImportMessage = null;
+    c.snapshot = activeSnapshot;
+    c.notifyListeners();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('山间的风').last);
     await capture('phone-player');
     await tester.tap(find.byTooltip('查看歌词'));

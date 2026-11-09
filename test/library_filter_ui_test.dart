@@ -43,6 +43,12 @@ Future<void> tapFilter(WidgetTester tester, Finder finder) async {
   expect(tester.takeException(), isNull);
 }
 
+Future<void> openFilter(WidgetTester tester) async {
+  await tapFilter(tester, find.byKey(const Key('library-options')));
+  expect(find.textContaining('1 首时长未知'), findsOneWidget);
+  await tapFilter(tester, find.byKey(const Key('library-filter')));
+}
+
 void main() {
   for (final size in [
     const Size(320, 640),
@@ -56,8 +62,11 @@ void main() {
         (tester) async {
           final c = await mountFilter(tester, size, scale: scale);
           expect(find.text('Short clip'), findsNothing);
-          expect(find.textContaining('1 首时长未知'), findsOneWidget);
-          await tapFilter(tester, find.byKey(const Key('library-filter')));
+          expect(
+            find.byKey(const Key('hidden-tracks-shortcut')),
+            findsOneWidget,
+          );
+          await openFilter(tester);
           await tester.enterText(
             find.byKey(const Key('short-audio-minimum')),
             '0',
@@ -71,43 +80,47 @@ void main() {
           await tapFilter(tester, find.byKey(const Key('short-audio-apply')));
           expect(c.libraryFilter.minimumSeconds, 45);
           expect(find.byType(AlertDialog), findsNothing);
-          await tapFilter(tester, find.byKey(const Key('library-filter')));
+          await openFilter(tester);
           await tester.enterText(
             find.byKey(const Key('short-audio-minimum')),
             '90',
           );
           await tapFilter(tester, find.text('取消'));
           expect(c.libraryFilter.minimumSeconds, 45);
-          await tapFilter(tester, find.byKey(const Key('library-filter')));
+          await openFilter(tester);
           await tester.binding.handlePopRoute();
           await tester.pumpAndSettle();
           expect(find.byType(AlertDialog), findsNothing);
-          await tapFilter(tester, find.byKey(const Key('library-filter')));
+          await openFilter(tester);
           await tapFilter(tester, find.byKey(const Key('short-audio-switch')));
           await tapFilter(tester, find.byKey(const Key('short-audio-apply')));
           expect(c.libraryFilter.enabled, false);
           expect(c.libraryFilter.minimumSeconds, 45);
-          expect(find.text('短音频过滤 · 已关闭'), findsOneWidget);
+          expect(find.byKey(const Key('hidden-tracks-shortcut')), findsNothing);
         },
       );
     }
   }
-  testWidgets('repeated open creates one dialog; Back restores library', (
-    tester,
-  ) async {
-    await mountFilter(tester, const Size(390, 844));
-    final open = tester
-        .widget<TextButton>(find.byKey(const Key('library-filter')))
-        .onPressed!;
-    open();
-    open();
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.byType(AlertDialog), findsNothing);
-    expect(find.text('音乐资料库'), findsOneWidget);
-  });
+  testWidgets(
+    'repeated options open creates one sheet; filter replaces it and Back restores library',
+    (tester) async {
+      await mountFilter(tester, const Size(390, 844));
+      final open = tester
+          .widget<IconButton>(find.byKey(const Key('library-options')))
+          .onPressed!;
+      open();
+      open();
+      await tester.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+      await tapFilter(tester, find.byKey(const Key('library-filter')));
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.text('音乐资料库'), findsOneWidget);
+    },
+  );
   testWidgets(
     'albums, artists and search do not expose hidden clips; turning off restores',
     (tester) async {

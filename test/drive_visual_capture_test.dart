@@ -104,8 +104,20 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('library-options')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('music-sources')));
         await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.text('Google Drive'),
+          120,
+          scrollable: find
+              .descendant(
+                of: find.byKey(const Key('music-sources-scroll')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         await tester.tap(find.text('Google Drive'));
         await tester.pumpAndSettle();
         Future<void> capture(String suffix) async {
@@ -154,6 +166,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byTooltip('关闭音乐来源'), findsNothing);
         expect(tester.takeException(), isNull);
+        await tester.tap(find.byKey(const Key('library-options')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('music-sources')));
         await tester.pumpAndSettle();
         await tester.binding.handlePopRoute();

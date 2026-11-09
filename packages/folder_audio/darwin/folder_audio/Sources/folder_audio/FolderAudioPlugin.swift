@@ -107,6 +107,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private var artwork: Data?
     private var loading = false
     private var scanning = false
+    private var importRevision = 0
+    private var pendingFolderImport = false
     private var picking = false
     private var lyricsResult: FlutterResult?
     private var lyricsRequest: UUID?
@@ -149,6 +151,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
             "sourceIdentity": library.sourceIdentity as Any? ?? NSNull(),
             "tracks": library.tracks.map { $0.map }, "currentTrackId": currentID as Any? ?? NSNull(),
             "isPlaying": player.timeControlStatus == .playing, "isLoading": loading || (wantsPlayback && player.timeControlStatus == .waitingToPlayAtSpecifiedRate),
+            "importRevision": importRevision,
             "isScanning": scanning, "shuffle": library.shuffle,
             "positionMs": position.isFinite ? max(0, Int(position * 1000)) : 0,
             "durationMs": duration.isFinite ? max(0, Int(duration * 1000)) : 0,
@@ -242,6 +245,9 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
             if let number = args["volume"] as? NSNumber, number.doubleValue.isFinite {
                 library.volume = Float(min(1, max(0, number.doubleValue))); player.volume = library.volume; save()
             }
+        case "cancelImport":
+            generation = UUID(); scanToken?.cancel(); scanning = false; pendingFolderImport = false
+            message = "已取消本次导入。"
         case "cancelLoading": cancelPlayback(); message = "已取消等待；系统可能继续管理 iCloud 下载。"
         default: result(FlutterMethodNotImplemented); return
         }
@@ -392,6 +398,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         // 用户主动重新选择时，即使是同一文件夹，也创建新来源。
                         self.library.sourceIdentity = UUID().uuidString
                         self.library.tracks = []; self.trackStatusRevisions = [:]; self.currentID = nil; self.history = []; self.shuffleBag = []; self.shuffleCycleStarted = false
+                        self.pendingFolderImport = true
                         self.save(); self.scan(removeMissing: false, discover: true)
                     }
                 }
@@ -475,6 +482,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         guard let bookmark = library.bookmark else { return }
         scanToken?.cancel()
         let token = Cancellation(); scanToken = token
+        let importing = pendingFolderImport; pendingFolderImport = false
         let request = generation; let previous = library.tracks; let statusRevision = playbackStatusRevision
         let online = networkAvailable
         let expectedVolume = library.volumeUUID
@@ -639,6 +647,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         if let renewed = renewed { self.library.bookmark = renewed }
                         if let id = self.currentID, !tracks.contains(where: { $0.id == id }) { self.cancelPlayback(); self.currentID = nil }
                         self.scanning = false
+                        if importing && !tracks.isEmpty { self.importRevision += 1 }
                         if !self.loading { self.message = issues ? "部分文件暂时无法确认，已保留记录；列表仅包含系统目前提供的目录信息。" : nil }
                         self.save(); self.emit()
                     }

@@ -113,11 +113,15 @@ void main() {
       ),
     );
     await capture('filter-phone-library');
+    await tester.tap(find.byKey(const Key('library-options')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('library-filter')));
     await capture('filter-phone-settings');
     await tester.tap(find.text('取消'));
     tester.view.physicalSize = const Size(1280, 900);
     await capture('filter-desktop-library');
+    await tester.tap(find.byKey(const Key('library-options')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('library-filter')));
     tester.view.physicalSize = const Size(844, 390);
     tester.platformDispatcher.textScaleFactorTestValue = 1.8;

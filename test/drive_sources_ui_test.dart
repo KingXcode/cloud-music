@@ -35,8 +35,20 @@ void main() {
       await c.initialize();
       await tester.pumpWidget(MusicApp(controller: c));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('library-options')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('music-sources')));
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Google Drive'),
+        120,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('music-sources-scroll')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
       await tester.tap(find.text('Google Drive'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
@@ -91,15 +103,67 @@ void main() {
     await c.initialize();
     await tester.pumpWidget(MusicApp(controller: c));
     await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library-options')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('music-sources')));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Google Drive'),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('music-sources-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.text('Google Drive'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('drive-connect')),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('music-sources-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.ensureVisible(find.byKey(const Key('drive-connect')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('drive-connect')),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('music-sources-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.byKey(const Key('drive-connect')));
     await tester.pumpAndSettle();
     expect(drive.connected, isTrue);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('drive-use-folder')),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('music-sources-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.ensureVisible(find.byKey(const Key('drive-use-folder')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('drive-use-folder')),
+      120,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('music-sources-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.byKey(const Key('drive-use-folder')));
     await tester.pumpAndSettle();
     expect(c.usingDrive, isTrue);

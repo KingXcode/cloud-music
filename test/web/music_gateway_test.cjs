@@ -232,11 +232,11 @@ test('iPhone uses multi-file selection and the command completes even when no pi
   assert.equal(h.events.at(-1).isPlaying, true);
   h.gateway.dispose();
 });
-test('iPad desktop identity and browsers without directory input support use files', async () => {
+test('old iPad desktop identity and browsers without directory input support use files', async () => {
   for (const options of [
-    {browser: {userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5}},
+    {browser: {userAgent: 'Mozilla/5.0 (Macintosh) Version/18.3 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5}},
     {directoryInput: false},
-    {browser: iphone, picker: () => {throw new Error('must not use a directory picker');}}
+    {browser: iphone}
   ]) {
     const h = harness(options);
     assert.equal((await h.gateway.initialize()).selectionMode, 'files');
@@ -550,4 +550,134 @@ test('confirmed source replacement cancels old read before source comparison or 
   comparison.resolve(false); await picking;
   assert.equal(h.events.at(-1).tracks[0].id, 'new.mp3');
   h.gateway.dispose();
+});
+
+
+test('modern iPhone and iPad use folder input instead of the old platform-wide files bypass', async () => {
+  for (const browser of [
+    {...iphone, userAgent: iphone.userAgent.replace('18_3', '18_4')},
+    {...iphone, userAgent: iphone.userAgent.replace('18_3', '26_0')},
+    {userAgent: 'Mozilla/5.0 (Macintosh) Version/18.4 Safari/605.1.15', platform: 'MacIntel', maxTouchPoints: 5},
+    {userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5}
+  ]) {
+    const h = harness({browser});
+    const initial = await h.gateway.initialize();
+    assert.equal(initial.selectionMode, 'folder'); assert.equal(initial.canPickFiles, true);
+    const pending = h.gateway.command('pickFolder');
+    assert.equal(h.input.attributes.webkitdirectory, '');
+    assert.equal(h.input.multiple, true); assert.equal(h.input.accept, undefined);
+    await pending;
+    h.input.files = [selectedFile('A.mp3', 'Music/Album/A.mp3'), selectedFile('B.mp3', 'Music/Album/B.mp3')];
+    h.input.listeners.change();
+    assert.equal(h.events.at(-1).tracks.length, 2);
+    assert.equal(h.events.at(-1).tracks[0].relativePath, 'Album/A.mp3');
+    assert.equal(h.events.at(-1).folderName, 'Music');
+    assert.match(h.events.at(-1).message, /文件夹选择/);
+    h.gateway.dispose();
+  }
+});
+
+test('explicit multi-file fallback remains available with directory support and refresh remembers choice', async () => {
+  const h = harness({picker: () => {throw new Error('explicit files must not open a folder picker');}});
+  await h.gateway.initialize();
+  await h.gateway.command('pickFiles');
+  assert.equal(h.picked, 0); assert.equal(h.input.multiple, true);
+  assert.equal(h.input.attributes.webkitdirectory, undefined);
+  h.input.files = [selectedFile('A.mp3'), selectedFile('B.mp3')]; h.input.listeners.change();
+  assert.equal(h.events.at(-1).folderName, '已选音乐文件');
+  assert.match(h.events.at(-1).message, /已选择音乐文件/);
+  assert.equal(h.cached.selectedFiles, true);
+  await h.gateway.command('refresh'); assert.equal(h.picked, 0);
+  assert.equal(h.input.attributes.webkitdirectory, undefined);
+  const restored = harness({cached: h.cached});
+  assert.match((await restored.gateway.initialize()).message, /重新选择音乐文件/);
+  h.gateway.dispose(); restored.gateway.dispose();
+});
+
+test('folder selection can follow multi-file fallback and cancellation preserves current songs', async () => {
+  const h = harness(); await h.gateway.initialize();
+  await h.gateway.command('pickFiles');
+  h.input.files = [selectedFile('A.mp3')]; h.input.listeners.change();
+  await h.gateway.command('pickFolder'); h.input.listeners.cancel();
+  assert.equal(h.events.at(-1).tracks[0].id, 'A.mp3');
+  assert.equal(h.cached.selectedFiles, true);
+  await h.gateway.command('pickFolder');
+  h.input.files = [selectedFile('B.mp3', 'Music/Album/B.mp3')]; h.input.listeners.change();
+  assert.equal(h.cached.selectedFiles, false);
+  assert.equal(h.events.at(-1).tracks[0].id, 'Album/B.mp3');
+  await h.gateway.command('refresh'); assert.equal(h.input.attributes.webkitdirectory, '');
+  h.gateway.dispose();
+});
+
+
+test('import success revision changes only for a completed nonempty accepted selection', async () => {
+  const h = harness();
+  assert.equal((await h.gateway.initialize()).importRevision, 0);
+  await h.gateway.command('pickFiles'); h.input.listeners.cancel();
+  assert.equal((await h.gateway.initialize()).importRevision, 0);
+  await h.gateway.command('pickFiles');
+  h.input.files = [{name: 'not-music.txt', type: 'text/plain'}]; h.input.listeners.change();
+  assert.equal(h.events.at(-1).importRevision, 0);
+  await h.gateway.command('pickFiles');
+  h.input.files = [selectedFile('A.mp3')]; h.input.listeners.change();
+  assert.equal(h.events.at(-1).importRevision, 1);
+  await h.gateway.command('pickFolder');
+  h.input.files = [selectedFile('B.mp3', 'Music/B.mp3')]; h.input.listeners.change();
+  assert.equal(h.events.at(-1).importRevision, 2);
+  h.gateway.dispose();
+});
+
+test('handle selection reports success only after traversal completes and never on root failure', async () => {
+  let finish;
+  const pending = new Promise(r => finish = r);
+  const picked = directory({});
+  picked.entries = async function* () {yield ['A.mp3', file('A.mp3')]; await pending;};
+  const h = harness({picker: () => picked}); await h.gateway.initialize();
+  const scanning = h.gateway.command('pickFolder'); await tick();
+  assert.equal(h.events.at(-1).isScanning, true);
+  assert.equal(h.events.at(-1).importRevision, 0);
+  finish(); await scanning;
+  assert.equal(h.events.at(-1).importRevision, 1);
+  h.gateway.dispose();
+  const failed = directory({}); failed.entries = async function* () {throw {name: 'NotAllowedError'};};
+  const failure = harness({picker: () => failed}); await failure.gateway.initialize();
+  await failure.gateway.command('pickFolder');
+  assert.equal(failure.events.at(-1).importRevision, 0); failure.gateway.dispose();
+  const empty = harness({picker: () => directory({})}); await empty.gateway.initialize();
+  await empty.gateway.command('pickFolder');
+  assert.equal(empty.events.at(-1).importRevision, 0); empty.gateway.dispose();
+});
+
+test('cancelImport releases a stalled directory scan and ignores its late success', async () => {
+  let finish;
+  const blocked = new Promise(r => finish = r);
+  const picked = directory({});
+  picked.entries = async function* () { yield ['A.mp3', file('A.mp3')]; await blocked; yield ['B.mp3', file('B.mp3')]; };
+  const h = harness({picker: () => picked}); await h.gateway.initialize();
+  const scanning = h.gateway.command('pickFolder'); await tick();
+  assert.equal(h.events.at(-1).isScanning, true);
+  await h.gateway.command('cancelImport');
+  assert.equal(await Promise.race([scanning.then(() => 'released'), tick().then(() => 'blocked')]), 'released');
+  assert.equal(h.events.at(-1).isScanning, false);
+  assert.equal(h.events.at(-1).importRevision, 0);
+  finish(); await tick(); assert.equal(h.events.at(-1).importRevision, 0);
+  assert.equal(h.events.at(-1).tracks.some(t => t.id === 'B.mp3'), false);
+  h.gateway.dispose();
+});
+
+test('cancelImport ignores late native picker and abandoned file input without stopping playback', async () => {
+  let selected;
+  const h = harness({picker: () => new Promise(r => selected = r)});
+  await h.gateway.initialize(); await h.gateway.command('pickFiles');
+  h.input.files = [selectedFile('A.mp3')]; h.input.listeners.change();
+  await h.gateway.command('play', {id: 'A.mp3'});
+  await h.gateway.command('pickFiles'); const abandoned = h.input;
+  await h.gateway.command('cancelImport');
+  abandoned.files = [selectedFile('ignored.mp3')]; abandoned.listeners.change();
+  assert.equal(h.events.at(-1).tracks[0].id, 'A.mp3'); assert.equal(h.events.at(-1).isPlaying, true);
+  const pending = h.gateway.command('pickFolder');
+  await h.gateway.command('cancelImport'); await pending;
+  selected(directory({'late.mp3': file('late.mp3')})); await tick();
+  assert.equal(h.events.at(-1).tracks[0].id, 'A.mp3'); assert.equal(h.events.at(-1).isPlaying, true);
+  assert.equal(h.events.at(-1).importRevision, 1); h.gateway.dispose();
 });

@@ -41,25 +41,30 @@
   window.createCloudMusicGateway = listener => {
     const audio = new Audio();
     const browser = window.navigator || {};
-    // iPadOS 可能将自己标识为 macOS。即使支持目录输入，
-    // 通过 iOS 文件提供器逐个选择文件仍是更可靠的方式。
+    // Safari 18.4 起 iOS/iPadOS 支持目录输入。旧版 WebKit 可能暴露
+    // 属性却无法打开目录，因此只排除明确识别的旧系统，保留文件多选退路。
     const appleMobile = /iPhone|iPad|iPod/.test(browser.userAgent || '') ||
       (browser.platform === 'MacIntel' && browser.maxTouchPoints > 1);
-    const filesOnly = appleMobile || (typeof window.showDirectoryPicker !== 'function' &&
-      !('webkitdirectory' in document.createElement('input')));
+    const appleVersion = (browser.userAgent || '').match(/(?:CPU(?: iPhone)? OS|iPhone OS) (\d+)[_.](\d+)/) ||
+      (appleMobile && (browser.userAgent || '').match(/Version\/(\d+)\.(\d+)/));
+    const legacyApplePicker = appleMobile && appleVersion &&
+      (+appleVersion[1] < 18 || (+appleVersion[1] === 18 && +appleVersion[2] < 4));
+    const filesOnly = typeof window.showDirectoryPicker !== 'function' &&
+      (legacyApplePicker || !('webkitdirectory' in document.createElement('input')));
     audio.preload = 'metadata';
-    const state = {folderName: null, sourceKind: 'web', sourceIdentity: newSourceIdentity(), selectionMode: filesOnly ? 'files' : 'folder', tracks: [], currentTrackId: null,
+    const state = {folderName: null, sourceKind: 'web', sourceIdentity: newSourceIdentity(), selectionMode: filesOnly ? 'files' : 'folder', canPickFiles: true, importRevision: 0, tracks: [], currentTrackId: null,
       isPlaying: false, isLoading: false, isScanning: false, shuffle: false,
       positionMs: 0, durationMs: 0, repeatMode: 'off', volume: 1, message: null};
     let root = null, entries = new Map(), disposed = false, initialized = false;
     let playGeneration = 0, scanGeneration = 0, url = null, picking = false, permissionBusy = false;
-    let pickerCleanup = null, cancelPreparation = null;
+    let pickerCleanup = null, cancelPreparation = null, cancelPickerOperation = null;
+    let selectedFiles = !!filesOnly;
     const history = [], shuffleVisited = new Set();
     const snapshot = () => ({...state, tracks: state.tracks.map(t => ({...t}))});
     function save() {
       try {
         localStorage.setItem(META, JSON.stringify({folderName: state.folderName, sourceIdentity: state.sourceIdentity,
-          tracks: state.tracks, shuffle: state.shuffle, repeatMode: state.repeatMode, volume: state.volume}));
+          tracks: state.tracks, selectedFiles, shuffle: state.shuffle, repeatMode: state.repeatMode, volume: state.volume}));
       } catch (_) { /* 隐私模式或配额限制不影响当前会话中的播放。 */ }
     }
     function emit(persist = false) {
@@ -115,7 +120,7 @@
     async function scan(handle, explicit, replacing = false) {
       const generation = ++scanGeneration;
       const previous = {root, entries, tracks: state.tracks, folderName: state.folderName,
-        sourceIdentity: state.sourceIdentity};
+        sourceIdentity: state.sourceIdentity, selectedFiles};
       // 新选择已确认，即使来源比较或枚举很慢，也不允许旧歌曲的待处理读取自动播放。
       if (replacing && state.isLoading) clearAudio();
       let committed = !replacing;
@@ -132,7 +137,7 @@
         if (disposed || generation !== scanGeneration) return;
         if (!committed) {
           clearAudio(); history.length = 0; shuffleVisited.clear(); state.currentTrackId = null;
-          root = handle; state.folderName = handle.name;
+          root = handle; selectedFiles = false; state.folderName = handle.name;
           if (!sameSource) state.sourceIdentity = newSourceIdentity();
           entries = new Map(); state.tracks = []; committed = true;
         }
@@ -174,7 +179,7 @@
           clearAudio(); history.length = 0; shuffleVisited.clear(); state.currentTrackId = null;
           root = previous.root; entries = previous.entries;
           state.tracks = previous.tracks.map(t => ({...t, status: previous.entries.has(t.id) ? 'unloaded' : 'accessRequired'}));
-          state.folderName = previous.folderName; state.sourceIdentity = previous.sourceIdentity;
+          state.folderName = previous.folderName; state.sourceIdentity = previous.sourceIdentity; selectedFiles = previous.selectedFiles;
         }
         state.isScanning = false; state.message = messageFor(rootError); emit(true); return;
       }
@@ -243,6 +248,7 @@
       if (failed.length) state.message = '部分子文件夹无法读取，已保留其中的原有歌曲。请检查权限或磁盘后刷新。';
       else if (unconfirmed) state.message = '部分原有歌曲暂时无法确认是否仍在原处，已保留。请检查磁盘、云端下载和权限后刷新。';
       else if (!tracks.length) state.message = '这个文件夹中没有找到支持识别的音频文件。';
+      if (replacing && discovered.size) state.importRevision++;
       emit(true);
       if (replacing) {
         const identity = state.sourceIdentity;
@@ -254,7 +260,7 @@
       }
     }
 
-    function acceptFiles(files) {
+    function acceptFiles(files, asFiles) {
       const next = new Map(), tracks = [];
       for (const file of files) {
         if (!extensions.test(file.name) && !file.type?.startsWith('audio/')) continue;
@@ -274,19 +280,21 @@
       entries = next;
       // 文件输入无法确认两次选择是否指向同一根目录。
       state.sourceIdentity = newSourceIdentity();
-      state.folderName = filesOnly ? '已选音乐文件' :
+      selectedFiles = asFiles;
+      state.folderName = asFiles ? '已选音乐文件' :
         (files[0].webkitRelativePath?.split('/')[0] || '已选音乐文件');
       state.currentTrackId = null;
       state.tracks = tracks.sort((a, b) => a.relativePath.localeCompare(b.relativePath, 'zh-CN', {numeric: true}));
-      state.message = filesOnly
+      state.message = asFiles
         ? '已选择音乐文件。重新打开网页后需再次选择，音频不会上传。浏览器无法查询 iCloud 下载状态，系统可能在选择时先下载文件，无法保证等到播放才下载。'
         : '当前浏览器使用文件夹选择模式，重新打开或刷新时需要再次选择原文件夹。浏览器无法查询 iCloud 下载状态，系统可能在选择时先下载文件，无法保证等到播放才下载。音频不会上传。';
+      state.importRevision++;
       // 持久化已清空的句柄时，不得因等待 IndexedDB 而卡住界面。
       const generation = scanGeneration;
       void savedHandle(null, true, () => !disposed && generation === scanGeneration && !root).catch(() => {});
       emit(true);
     }
-    function fallbackPick() {
+    function fallbackPick(asFiles) {
       // 某些 iOS 与文件提供器组合既不发送 change，也不发送 cancel 事件。
       // 不等待这些事件，命令在打开原生面板后即结束。
       // 后续用户手势始终可以丢弃已放弃的输入并重试。
@@ -294,7 +302,7 @@
       ++scanGeneration;
       const input = document.createElement('input');
       input.type = 'file'; input.multiple = true; input.tabIndex = -1;
-      if (filesOnly) input.accept = 'audio/*,.mp3,.m4a,.aac,.wav,.wave,.flac,.ogg,.oga,.opus,.aif,.aiff,.alac,.mp4,.webm';
+      if (asFiles) input.accept = 'audio/*,.mp3,.m4a,.aac,.wav,.wave,.flac,.ogg,.oga,.opus,.aif,.aiff,.alac,.mp4,.webm';
       else input.setAttribute('webkitdirectory', '');
       input.setAttribute('aria-hidden', 'true');
       Object.assign(input.style, {position: 'fixed', left: '-10000px', width: '1px', height: '1px', opacity: '0'});
@@ -306,7 +314,7 @@
         settled = true; input.remove();
         if (pickerCleanup === cleanup) pickerCleanup = null;
         if (disposed || !files?.length) return;
-        try { acceptFiles(files); }
+        try { acceptFiles(files, asFiles); }
         catch (e) { state.message = messageFor(e); emit(); }
       };
       pickerCleanup = cleanup;
@@ -315,23 +323,36 @@
       try { input.click(); }
       catch (e) { cleanup(); throw e; }
     }
-    async function pick() {
+    async function pick(asFiles = !!filesOnly) {
       if (picking || state.isScanning || permissionBusy) return;
       picking = true;
-      try {
-        if (!filesOnly && typeof window.showDirectoryPicker === 'function') {
+      let cancel;
+      const cancelled = new Promise(resolve => { cancel = resolve; });
+      cancelPickerOperation = cancel;
+      const operation = async () => {
+        if (!asFiles && typeof window.showDirectoryPicker === 'function') {
+          pickerCleanup?.();
+          const generation = ++scanGeneration;
           const handle = await window.showDirectoryPicker({mode: 'read', id: 'cloud-music-library'});
+          if (disposed || generation !== scanGeneration) return;
           await scan(handle, true, true);
         } else {
-          fallbackPick();
+          fallbackPick(asFiles);
         }
+      };
+      try {
+        // Start the picker synchronously; cancellation also releases the command
+        // if a provider never finishes its directory iterator or native picker.
+        await Promise.race([operation(), cancelled]);
       } catch (e) { if (!aborted(e)) { state.message = messageFor(e); emit(); } }
-      finally { picking = false; }
+      finally {
+        if (cancelPickerOperation === cancel) { cancelPickerOperation = null; picking = false; }
+      }
     }
 
     async function refresh() {
       if (state.isScanning || picking || permissionBusy) return;
-      if (!root) return pick();
+      if (!root) return pick(selectedFiles);
       permissionBusy = true;
       try {
         // 在任何异步边界之前，直接从点击处理函数中调用。
@@ -367,7 +388,7 @@
       if (!id || disposed) return;
       const entry = entries.get(id);
       if (!entry) {
-        state.message = filesOnly ? '请重新选择音乐文件以恢复播放。' : '请点击刷新授权原文件夹；此浏览器若不支持记住文件夹，请重新选择。'; emit(); return;
+        state.message = selectedFiles ? '请重新选择音乐文件以恢复播放。' : '请点击刷新授权原文件夹；此浏览器若不支持记住文件夹，请重新选择。'; emit(); return;
       }
       if (!continueCycle) shuffleVisited.clear();
       shuffleVisited.add(id);
@@ -451,13 +472,14 @@
             state.folderName = typeof cached.folderName === 'string' ? cached.folderName : null;
             if (typeof cached.sourceIdentity === 'string' && cached.sourceIdentity.length < 200) state.sourceIdentity = cached.sourceIdentity;
             state.tracks = Array.isArray(cached.tracks) ? cached.tracks.filter(t => typeof t.id === 'string' && typeof t.relativePath === 'string').map(t => ({...t, status: 'accessRequired'})) : [];
+            selectedFiles = filesOnly || cached.selectedFiles === true;
             state.shuffle = cached.shuffle === true;
             state.repeatMode = ['off', 'all', 'one'].includes(cached.repeatMode) ? cached.repeatMode : 'off';
             state.volume = Number.isFinite(cached.volume) ? Math.max(0, Math.min(1, cached.volume)) : 1;
             audio.volume = state.volume;
           }
         } catch (_) {}
-        if (filesOnly) {
+        if (selectedFiles) {
           if (state.folderName) state.message = '请重新选择音乐文件以恢复播放；网页不会保存音频或持续读取 iCloud 文件夹。';
           return snapshot();
         }
@@ -495,6 +517,7 @@
         switch (method) {
           case 'initialize': return this.initialize();
           case 'pickFolder': return pick();
+          case 'pickFiles': return pick(true);
           case 'refresh': return refresh();
           case 'play': return play(args.id);
           case 'togglePlayback':
@@ -517,6 +540,9 @@
             }
             return play(state.currentTrackId || state.tracks[0]?.id);
           case 'pause': if (state.isLoading) clearAudio(); else { ++playGeneration; audio.pause(); } state.isLoading = false; emit(); return;
+          case 'cancelImport':
+            ++scanGeneration; state.isScanning = false; pickerCleanup?.(); cancelPickerOperation?.();
+            state.message = '已取消本次导入；系统可能继续管理已开始的文件下载。'; emit(); return;
           case 'cancelLoading': clearAudio(); state.message = '已取消本次播放等待；浏览器无法保证取消系统正在进行的 iCloud 下载。'; emit(); return;
           case 'next': return advance(1);
           case 'previous': return advance(-1);
@@ -537,7 +563,7 @@
       },
       dispose() {
         if (disposed) return;
-        disposed = true; ++scanGeneration; pickerCleanup?.();
+        disposed = true; ++scanGeneration; pickerCleanup?.(); cancelPickerOperation?.();
         for (const [name, callback] of listeners) audio.removeEventListener(name, callback);
         clearAudio(); entries.clear(); root = null;
       }

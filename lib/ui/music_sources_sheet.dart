@@ -26,7 +26,16 @@ class MusicSourcesSheet extends StatefulWidget {
 }
 
 class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
-  bool _showDrive = false;
+  bool _showDrive = false, _startingImport = false;
+  void _startImport(VoidCallback action) {
+    if (_startingImport || widget.controller.isBusy || drive?.busy == true) {
+      return;
+    }
+    _startingImport = true;
+    Navigator.pop(context);
+    action();
+  }
+
   DriveGateway? get drive => widget.controller.drive;
 
   @override
@@ -83,16 +92,47 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
                           if (context.mounted) Navigator.pop(context);
                         },
                 ),
-                TextButton.icon(
-                  onPressed: widget.controller.isBusy || d?.busy == true
-                      ? null
-                      : () {
-                          Navigator.pop(context);
-                          widget.controller.pickFolder();
-                        },
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  label: const Text('选择系统音乐文件夹 / 文件'),
-                ),
+                if (!widget.controller.selectsFiles)
+                  TextButton.icon(
+                    key: const Key('source-pick-folder'),
+                    onPressed: widget.controller.isBusy || d?.busy == true
+                        ? null
+                        : () => _startImport(widget.controller.pickFolder),
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('选择音乐文件夹'),
+                  ),
+                if (widget.controller.canPickFiles ||
+                    widget.controller.selectsFiles)
+                  TextButton.icon(
+                    key: const Key('source-pick-files'),
+                    onPressed: widget.controller.isBusy || d?.busy == true
+                        ? null
+                        : () => _startImport(
+                            widget.controller.canPickFiles
+                                ? widget.controller.pickFiles
+                                : widget.controller.pickFolder,
+                          ),
+                    icon: const Icon(Icons.library_music_outlined),
+                    label: const Text('选择多个音乐文件'),
+                  ),
+                if (widget.controller.canScanDevice) ...[
+                  TextButton.icon(
+                    key: const Key('source-scan-device'),
+                    onPressed: widget.controller.isBusy || d?.busy == true
+                        ? null
+                        : () => _startImport(widget.controller.scanDevice),
+                    icon: const Icon(Icons.manage_search),
+                    label: const Text('扫描本机音乐'),
+                  ),
+                  const Text(
+                    '读取系统媒体库中的音乐，需要音乐读取权限。未收录的音乐或 U 盘可通过选择文件夹导入。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.5,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
                 const Divider(),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

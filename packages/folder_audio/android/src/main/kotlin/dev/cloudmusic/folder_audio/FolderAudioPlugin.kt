@@ -2,6 +2,8 @@ package dev.cloudmusic.folder_audio
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
@@ -15,12 +17,13 @@ import io.flutter.plugin.common.*
 
 /** 仅负责 Flutter 适配；进程级引擎在 Activity 重建后仍可继续存在。 */
 class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler,
-    EventChannel.StreamHandler, PluginRegistry.ActivityResultListener {
+    EventChannel.StreamHandler, PluginRegistry.ActivityResultListener, PluginRegistry.RequestPermissionsResultListener {
     private lateinit var methods: MethodChannel
     private lateinit var events: EventChannel
     private lateinit var engine: AudioEngine
     private var binding: ActivityPluginBinding? = null
     private var picking = false
+    private var scanPermissionPending = false
     private var lyricsResult: MethodChannel.Result? = null
     private var lyricsIO = Executors.newSingleThreadExecutor()
     @Volatile private var engineGeneration = 0
@@ -73,7 +76,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             }
             "importLyrics" -> {
                 val activity = binding?.activity
-                if (lyricsResult != null || picking) result.error("picker_busy", "请先关闭当前文件选择器。", null)
+                if (lyricsResult != null || picking || scanPermissionPending) result.error("picker_busy", "请先关闭当前文件选择器。", null)
                 else if (activity == null) result.error("no_activity", "请返回应用后导入歌词。", null)
                 else {
                     lyricsResult = result
@@ -100,6 +103,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
     override fun onDetachedFromEngine(b: FlutterPlugin.FlutterPluginBinding) {
         finishLyrics(error = "应用已关闭，请重试导入。")
+        scanPermissionPending = false
         engineGeneration++
         // 等待任务执行完毕，不中断正在进行的原子写入；队列中过期的缓存操作
         // 无法通过代次检查，工作线程在队列清空后退出。
@@ -108,11 +112,40 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
     override fun onListen(arguments: Any?, sink: EventChannel.EventSink) { engine.sink = sink; engine.emit() }
     override fun onCancel(arguments: Any?) { engine.sink = null }
-    override fun onAttachedToActivity(b: ActivityPluginBinding) { binding = b; b.addActivityResultListener(this) }
+    override fun onAttachedToActivity(b: ActivityPluginBinding) {
+        binding = b; b.addActivityResultListener(this); b.addRequestPermissionsResultListener(this)
+    }
     override fun onDetachedFromActivityForConfigChanges() { detach() }
     override fun onReattachedToActivityForConfigChanges(b: ActivityPluginBinding) { onAttachedToActivity(b) }
-    override fun onDetachedFromActivity() { detach(); picking = false; finishLyrics(error = "页面已关闭，请重试导入。") }
-    private fun detach() { binding?.removeActivityResultListener(this); binding = null }
+    override fun onDetachedFromActivity() { detach(); picking = false; scanPermissionPending = false; finishLyrics(error = "页面已关闭，请重试导入。") }
+    private fun detach() {
+        binding?.removeActivityResultListener(this); binding?.removeRequestPermissionsResultListener(this); binding = null
+    }
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray): Boolean {
+        if (requestCode != 7414) return false
+        if (!scanPermissionPending) return true
+        scanPermissionPending = false
+        val permission = DeviceAudioScanner.permission(Build.VERSION.SDK_INT)
+        val index = permissions.indexOf(permission)
+        if (index >= 0 && grantResults.getOrNull(index) == PackageManager.PERMISSION_GRANTED && DeviceAudioScanner.permitted(engine.context)) engine.scanDevice(fromImport = true)
+        else engine.notice("未授予音乐读取权限，原资料库已保留。仍可选择文件夹；若系统不再弹窗，请在应用设置中允许音乐和音频访问。")
+        return true
+    }
+    private fun requestDeviceScan() {
+        if (picking || lyricsResult != null || scanPermissionPending) {
+            engine.notice("请先完成当前选择或授权，再扫描本机音乐。"); return
+        }
+        val activity = binding?.activity
+        if (activity == null) { engine.notice("请返回应用后扫描本机音乐。"); return }
+        if (DeviceAudioScanner.permitted(engine.context)) { engine.scanDevice(fromImport = true); return }
+        // A runtime prompt is only allowed after the explicit scan command, never on startup.
+        scanPermissionPending = true
+        try { activity.requestPermissions(arrayOf(DeviceAudioScanner.permission(Build.VERSION.SDK_INT)), 7414) }
+        catch (_: Exception) {
+            scanPermissionPending = false
+            engine.notice("无法请求音乐读取权限，原资料库已保留。可改用选择文件夹。")
+        }
+    }
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
         if (requestCode == 7413) {
             val pending = lyricsResult ?: return true
@@ -153,7 +186,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
         try {
             when (call.method) {
                 "initialize" -> { result.success(engine.snapshot()); engine.scan(false); return }
-                "pickFolder" -> if (!picking && lyricsResult == null) {
+                "pickFolder" -> if (!picking && lyricsResult == null && !scanPermissionPending) {
                     val activity = binding?.activity
                     if (activity == null) engine.notice("请返回应用后选择文件夹。") else {
                         picking = true
@@ -162,6 +195,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                         }, 7412) } catch (e: Exception) { picking = false; throw e }
                     }
                 }
+                "scanDevice" -> requestDeviceScan()
                 "refresh" -> engine.scan(true)
                 "play" -> engine.play(call.argument<String>("id") ?: "")
                 "togglePlayback" -> engine.toggle()
@@ -172,7 +206,7 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                 "setShuffle" -> engine.setShuffle(call.argument<Boolean>("enabled") ?: false)
                 "setRepeat" -> engine.setRepeat(call.argument<String>("mode") ?: "off")
                 "setVolume" -> engine.setVolume(call.argument<Number>("volume")?.toDouble() ?: 1.0)
-                "cancelLoading" -> engine.cancel()
+                "cancelImport", "cancelLoading" -> { scanPermissionPending = false; engine.cancel() }
                 else -> { result.notImplemented(); return }
             }
             result.success(engine.snapshot())

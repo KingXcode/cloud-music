@@ -33,13 +33,29 @@ class MusicController extends ChangeNotifier {
   DriveGateway? get drive =>
       _gateway is SourceMusicGateway ? _gateway.drive : null;
   bool get usingDrive => _gateway is SourceMusicGateway && _gateway.usingDrive;
+  LibrarySnapshot get _localSnapshot =>
+      _gateway is SourceMusicGateway ? _gateway.localSnapshot : _snapshot;
+  bool get isLocalImportScanning => _gateway is SourceMusicGateway
+      ? _gateway.isLocalImportScanning
+      : _snapshot.sourceKind == 'android' && _snapshot.isScanning;
+  String? get localImportMessage => _gateway is SourceMusicGateway && usingDrive
+      ? _gateway.localImportMessage
+      : null;
+  Future<void> cancelLocalImport() => _command(
+    _gateway is SourceMusicGateway ? 'cancelLocalImport' : 'cancelLoading',
+  );
+  bool get canPickFiles => _localSnapshot.canPickFiles;
+  bool get canScanDevice => _localSnapshot.canScanDevice;
+  bool get selectsFiles => _localSnapshot.selectsFiles;
   Future<void> useDriveFolder() => _command('driveUseFolder');
   Future<void> disconnectDrive() => _command('driveDisconnect');
   Future<void> useLocalSource() => _command('useLocal');
   LibrarySnapshot _snapshot = const LibrarySnapshot();
   LibrarySnapshot get snapshot => _snapshot;
   String? _error;
-  String? get error => _error;
+  String? get error =>
+      _error ??
+      (usingDrive && !isLocalImportScanning ? localImportMessage : null);
   bool _initialized = false,
       _choosingFolder = false,
       _refreshing = false,
@@ -47,7 +63,11 @@ class MusicController extends ChangeNotifier {
   int _eventRevision = 0;
   bool get initialized => _initialized;
   bool get isBusy =>
-      !_initialized || _choosingFolder || _refreshing || _snapshot.isScanning;
+      !_initialized ||
+      _choosingFolder ||
+      _refreshing ||
+      _snapshot.isScanning ||
+      isLocalImportScanning;
   Future<void>? _initialization;
   StreamSubscription<LibrarySnapshot>? _subscription;
 
@@ -92,11 +112,15 @@ class MusicController extends ChangeNotifier {
     folder: _snapshot.folderName ?? '',
   );
 
-  Future<void> pickFolder() async {
+  Future<void> pickFolder() => _selectLocal('pickFolder');
+  Future<void> pickFiles() => _selectLocal('pickFiles');
+  Future<void> scanDevice() => _selectLocal('scanDevice');
+
+  Future<void> _selectLocal(String method) async {
     if (isBusy) return;
     _choosingFolder = true;
     notifyListeners();
-    await _command('pickFolder');
+    await _command(method);
     if (!_disposed) {
       _choosingFolder = false;
       notifyListeners();
@@ -135,6 +159,7 @@ class MusicController extends ChangeNotifier {
   void clearError() {
     if (_disposed) return;
     _error = null;
+    if (_gateway is SourceMusicGateway) _gateway.clearLocalImportMessage();
     notifyListeners();
   }
 

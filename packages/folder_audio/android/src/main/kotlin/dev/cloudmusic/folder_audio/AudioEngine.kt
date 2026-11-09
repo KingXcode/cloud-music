@@ -15,12 +15,6 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
-internal data class Song(val id: String, var title: String, var artist: String = "", var album: String = "",
-    val relativePath: String, var status: String = "ready", var durationMs: Long = 0) {
-    fun map(): Map<String, Any> = mapOf("id" to id, "title" to title, "artist" to artist,
-        "album" to album, "relativePath" to relativePath, "status" to status, "durationMs" to durationMs)
-}
-
 internal class AudioEngine private constructor(val context: Context) {
     companion object {
         @Volatile private var instance: AudioEngine? = null
@@ -43,12 +37,15 @@ internal class AudioEngine private constructor(val context: Context) {
     private var duck = 1f
     private var player: MediaPlayer? = null
     private var prepared = false
+    private var deviceLibrary = prefs.getBoolean("deviceLibrary", false)
     private var tree: Uri? = prefs.getString("tree", null)?.let(Uri::parse)
     private var folderName: String? = prefs.getString("folder", null)
     private var tracks = mutableListOf<Song>()
     private var current: String? = null
     private var loading = false
     private var scanning = false
+    private var importRevision = 0
+    private var pendingFolderImport = false
     private var message: String? = null
     private var artwork: ByteArray? = null
     private var shuffle = prefs.getBoolean("shuffle", false)
@@ -80,7 +77,8 @@ internal class AudioEngine private constructor(val context: Context) {
         handler.post(object : Runnable { override fun run() { if (isPlaying()) emit(); handler.postDelayed(this, 750) } })
     }
     fun snapshot(): Map<String, Any?> = mapOf("folderName" to folderName, "sourceKind" to "android",
-        "sourceIdentity" to tree?.toString(),
+        "sourceIdentity" to if (deviceLibrary) "mediastore:audio" else tree?.toString(),
+        "canScanDevice" to true, "importRevision" to importRevision,
         "tracks" to tracks.map { it.map() }, "currentTrackId" to current, "isPlaying" to isPlaying(),
         "isLoading" to loading, "isScanning" to scanning, "shuffle" to shuffle,
         "positionMs" to position(), "durationMs" to duration(), "repeatMode" to repeat,
@@ -93,13 +91,13 @@ internal class AudioEngine private constructor(val context: Context) {
     fun position(): Long = try { if (prepared) player?.currentPosition?.toLong() ?: 0 else 0 } catch (_: Exception) { 0 }
     fun duration(): Long = try { if (prepared) player?.duration?.toLong()?.coerceAtLeast(0) ?: 0 else 0 } catch (_: Exception) { 0 }
     private fun save() {
-        prefs.edit().putString("tree", tree?.toString()).putString("folder", folderName)
+        prefs.edit().putBoolean("deviceLibrary", deviceLibrary).putString("tree", tree?.toString()).putString("folder", folderName)
             .putString("tracks", JSONArray(tracks.map { JSONObject(it.map()) }).toString())
             .putBoolean("shuffle", shuffle).putString("repeat", repeat).putFloat("volume", volume).apply()
     }
     fun select(uri: Uri) {
         cancel(); stopPlayer(); current = null; artwork = null; history.clear(); shuffledPlayed.clear()
-        tree = uri; folderName = "所选文件夹"; tracks.clear(); save(); scan(true)
+        pendingFolderImport = true; deviceLibrary = false; tree = uri; folderName = "所选文件夹"; tracks.clear(); save(); scan(true)
     }
     fun cancel() { scanSignal?.cancel(); scanGeneration.incrementAndGet(); scanning = false; if (loading) { stopPlayer(); loading = false }; message = "已取消加载。"; emit() }
     private data class Scan(val songs: MutableList<Song> = mutableListOf(), var complete: Boolean = true, var name: String? = null)
@@ -135,8 +133,10 @@ internal class AudioEngine private constructor(val context: Context) {
         }
     }
     fun scan(refresh: Boolean) {
+        if (deviceLibrary) { scanDevice(); return }
         val source = tree ?: return
         if (scanning) return
+        val importing = pendingFolderImport; pendingFolderImport = false
         val token = scanGeneration.incrementAndGet(); val signal = CancellationSignal(); scanSignal = signal; scanning = true; message = "正在检查文件夹…"; emit()
         val old = tracks.map { it.copy() }
         io.execute {
@@ -199,11 +199,57 @@ internal class AudioEngine private constructor(val context: Context) {
                     }
                     tracks = merged.sortedBy { it.relativePath.lowercase() }.toMutableList()
                     folderName = result.name ?: folderName
+                    if (importing && result.songs.isNotEmpty()) importRevision++
                     if (current != null && tracks.none { it.id == current }) { stopPlayer(); current = null; artwork = null }
                     message = if (result.complete) "文件夹检查完成，共 ${tracks.size} 首。" else "文件夹暂时无法完整读取，已保留原有歌曲；请检查 U 盘或权限后刷新。"
                     save()
                 } else { tracks.forEach { it.status = "offline" }; message = "文件夹无法访问，已保留音乐库。请连接 U 盘或重新选择文件夹。"; save() }
                 emit()
+            }
+        }
+    }
+    fun scanDevice(fromImport: Boolean = false) {
+        if (scanning) return
+        if (!DeviceAudioScanner.permitted(context)) {
+            if (deviceLibrary) tracks.forEach { it.status = "accessRequired" }
+            notice("未获得音乐读取权限。可点击扫描重新授权，或直接选择文件夹；原资料库已保留。")
+            return
+        }
+        val wasDeviceLibrary = deviceLibrary
+        val token = scanGeneration.incrementAndGet()
+        val signal = CancellationSignal(); scanSignal = signal
+        scanning = true; message = "正在扫描本机音乐…"; emit()
+        io.execute {
+            try {
+                val found = DeviceAudioScanner.scan(context, signal)
+                handler.post {
+                    if (token != scanGeneration.get()) return@post
+                    scanning = false
+                    // An empty first scan must not replace the user's existing folder library.
+                    if (!wasDeviceLibrary && found.isEmpty()) {
+                        notice("系统媒体库未找到音乐，已保留原资料库。未被系统收录的文件或 U 盘音乐，请选择文件夹。")
+                        return@post
+                    }
+                    if (!wasDeviceLibrary) {
+                        stopPlayer(); current = null; artwork = null; history.clear(); shuffledPlayed.clear()
+                    }
+                    tracks = mergeDeviceSongs(found, if (wasDeviceLibrary) tracks else emptyList())
+                    deviceLibrary = true; tree = null; folderName = "本机音乐"
+                    if (fromImport && found.isNotEmpty()) importRevision++
+                    val unseen = tracks.size - found.size
+                    message = "扫描完成，找到 ${found.size} 首本机音乐。" +
+                        if (unseen > 0) "另有 $unseen 首暂时无法确认，已保留；请检查存储卡或权限。" else "未收录的音乐或 U 盘目录可通过选择文件夹导入。"
+                    save(); emit()
+                }
+            } catch (_: OperationCanceledException) { /* cancel/source change owns the state. */ }
+            catch (error: Exception) {
+                handler.post {
+                    if (token != scanGeneration.get()) return@post
+                    scanning = false
+                    if (wasDeviceLibrary) tracks.forEach { it.status = if (error is SecurityException) "accessRequired" else "offline" }
+                    notice(if (error is SecurityException) "音乐读取权限已撤销，已保留原资料库。请重新点击扫描授权，或选择文件夹。"
+                        else "本机音乐暂时无法完整扫描，已保留原资料库。请检查存储卡后重试，或选择文件夹。")
+                }
             }
         }
     }

@@ -50,7 +50,7 @@ void main() {
     expect(find.text('正在列出歌曲 · 已显示 2 首'), findsOneWidget);
     expect(find.text('未读取 · 播放时加载'), findsOneWidget);
     expect(find.text('需重新授权或选择'), findsOneWidget);
-    expect(find.textContaining('网页无法判断 iCloud 下载状态'), findsOneWidget);
+    expect(find.byKey(const Key('source-loading-help')), findsNothing);
     expect(find.text('未下载 · 播放时下载'), findsNothing);
     await tester.tap(find.text('First song'));
     expect(controller.playedId, 'a');
@@ -102,7 +102,14 @@ void main() {
       addTearDown(controller.lyrics.dispose);
       await tester.pumpWidget(MusicApp(controller: controller));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('source-loading-help')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('library-options')));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const Key('source-loading-help')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('网页无法判断 iCloud 下载状态').hitTestable(),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }

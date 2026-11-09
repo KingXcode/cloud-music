@@ -33,6 +33,59 @@ class FakeGateway implements MusicGateway {
 }
 
 void main() {
+  test(
+    'local import capabilities parse safely and share one busy gate',
+    () async {
+      expect(LibrarySnapshot.fromMap({}).canScanDevice, false);
+      final parsed = LibrarySnapshot.fromMap({
+        'canScanDevice': true,
+        'canPickFiles': true,
+        'selectionMode': 'files',
+      });
+      final gateway = FakeGateway()
+        ..initial = parsed
+        ..commandPending = Completer<void>();
+      final controller = MusicController(gateway: gateway);
+      await controller.initialize();
+      expect(controller.canScanDevice, true);
+      expect(controller.canPickFiles, true);
+      expect(controller.selectsFiles, true);
+      final pending = controller.scanDevice();
+      await controller.scanDevice();
+      await controller.pickFiles();
+      await controller.pickFolder();
+      expect(gateway.calls.map((c) => c.$1), ['scanDevice']);
+      gateway.commandPending!.complete();
+      await pending;
+      expect(controller.isBusy, false);
+      await controller.pickFiles();
+      expect(gateway.calls.last.$1, 'pickFiles');
+      controller.dispose();
+    },
+  );
+  test(
+    'scan permission denial preserves the previous library and allows retry',
+    () async {
+      final gateway = FakeGateway()
+        ..initial = const LibrarySnapshot(
+          folderName: 'Music',
+          canScanDevice: true,
+          tracks: [Track(id: 'one', title: 'One')],
+        )
+        ..failure = PlatformException(code: 'permission', message: '未授予音乐权限');
+      final controller = MusicController(gateway: gateway);
+      await controller.initialize();
+      await controller.scanDevice();
+      expect(controller.error, '未授予音乐权限');
+      expect(controller.snapshot.folderName, 'Music');
+      expect(controller.snapshot.tracks.single.id, 'one');
+      expect(controller.isBusy, false);
+      gateway.failure = null;
+      await controller.scanDevice();
+      expect(gateway.calls.length, 2);
+      controller.dispose();
+    },
+  );
   test('row selection sends the exact track ID', () async {
     final gateway = FakeGateway();
     final controller = MusicController(gateway: gateway);

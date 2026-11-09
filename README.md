@@ -11,6 +11,7 @@
 - iCloud 目录分批展示歌曲，Apple 原生端用系统属性标记未下载并按点播请求下载；网页按浏览器能力先列名称、点播读取，不虚构 iCloud 下载状态。Safari/iOS 选择器可能提前下载，详见 [按需读取与平台限制](docs/ICLOUD_ON_DEMAND.md)。
 
 - 新增「音乐来源」入口与 Google Drive 官方只读接入代码：授权后浏览音乐目录、建立会话曲库和播放。**需要开发者 OAuth Client ID；未配置版本不能直接登录，真实账号/设备尚未联调。** 详见 [Google Drive 配置和限制](docs/GOOGLE_DRIVE.md)。
+- Android 新增显式「扫描本机音乐」，经用户授予音乐读取权限后读取系统媒体库；未收录的音乐或 U 盘仍可选文件夹。拒绝权限、空扫描和读取失败不会清空原曲库。详见[文件夹选择与本机扫描](docs/LOCAL_MUSIC_IMPORT.md)。
 - 在 Apple 设备上选择 iCloud Drive 文件夹，或通过 Android 系统选择器选择本地、USB 目录。
 - 保存访问权限和元数据索引，通过原始 URL/URI 播放，不将歌曲复制到应用沙盒。
 - 恢复文件夹书签和 Android 存储访问框架（SAF）的持久权限。浏览器在支持且获准时记住目录句柄，其他浏览器会在需要时提示重新选择。
@@ -41,7 +42,7 @@ node --test test/web/*.cjs
 flutter run -d chrome
 ```
 
-在本地浏览器使用文件夹选择器时，请通过 localhost 或 HTTPS 提供服务。桌面版 Chrome/Edge 对 File System Access 持久访问的支持最完整。其他兼容的桌面浏览器提供文件夹输入回退方案；iPhone/iPad 使用音频文件多选，并明确提示何时需要重新选择。详见 `docs/WEB_PLAYBACK.md`。
+在本地浏览器使用文件夹选择器时，请通过 localhost 或 HTTPS 提供服务。桌面版 Chrome/Edge 对 File System Access 持久访问的支持最完整。支持目录输入的 Safari（含 iPhone/iPad Safari 18.4+）可选择整个文件夹；同时保留多个文件选择，旧版 iOS 和不支持目录的浏览器使用多选回退。详见 `docs/WEB_PLAYBACK.md`。
 
 ```sh
 flutter run -d macos       # 需要 macOS 和 Xcode
@@ -106,3 +107,7 @@ Android 发布配置目前使用标准调试/测试签名密钥，因此安装�
 ## 0.6.2 短音频过滤
 
 资料库新增“短音频过滤”，默认隐藏已知时长不足 30 秒的音频，可调整为 1–600 秒或关闭。歌曲、专辑、歌手和搜索共用设置，本机持久保存。未知时长暂时保留，播放补全时长后更新显示；不会仅为测量时长读取或下载云端音频，也不删除源文件或改动当前播放与待播清单。详见[过滤规则与验证](docs/SHORT_AUDIO_FILTER.md)。
+
+## 0.6.3 资料库与音乐导入
+
+手机资料库精简为标题、分类和单行播放操作，打开即可看到歌曲。低频管理操作收进资料库选项，搜索独立，未播放时不显示占位播放器。支持按平台能力区分文件夹、多选文件和 Android 本机音乐扫描入口。查看[资料库改版说明](docs/UI_REDESIGN.md#063-资料库首屏与添加音乐)。

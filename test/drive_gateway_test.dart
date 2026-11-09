@@ -6,6 +6,7 @@ import 'package:cloud_music/drive/drive_platform.dart';
 import 'package:cloud_music/gateway/music_gateway.dart';
 import 'package:cloud_music/gateway/source_music_gateway.dart';
 import 'package:cloud_music/models.dart';
+import 'package:cloud_music/music_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -79,17 +80,22 @@ class FakeLocalGateway implements MusicGateway {
   final events = StreamController<LibrarySnapshot>.broadcast(sync: true);
   final commands = <String>[];
   Completer<void>? pausePending;
+  Object? commandFailure;
   @override
   Stream<LibrarySnapshot> get snapshots => events.stream;
   @override
-  Future<LibrarySnapshot> initialize() async =>
-      const LibrarySnapshot(folderName: 'Local');
+  Future<LibrarySnapshot> initialize() async => const LibrarySnapshot(
+    folderName: 'Local',
+    canScanDevice: true,
+    canPickFiles: true,
+  );
   @override
   Future<void> command(
     String method, [
     Map<String, Object?> arguments = const {},
   ]) async {
     commands.add(method);
+    if (commandFailure != null) throw commandFailure!;
     if (method == 'pause' && pausePending != null) await pausePending!.future;
   }
 
@@ -125,6 +131,205 @@ MockClient apiClient({Future<http.Response> Function(http.Request)? list}) =>
     });
 
 void main() {
+  test(
+    'file picking and device scanning always route to the local source',
+    () async {
+      final p = FakeDrivePlatform();
+      final d = DriveGateway(platform: p, client: apiClient());
+      final local = FakeLocalGateway();
+      final source = SourceMusicGateway(local: local, drive: d);
+      addTearDown(source.dispose);
+      await source.initialize();
+      expect(source.localSnapshot.canScanDevice, true);
+      var revision = 0;
+      for (final command in ['pickFolder', 'pickFiles', 'scanDevice']) {
+        await d.connect();
+        await source.command('driveUseFolder');
+        expect(source.usingDrive, true);
+        await source.command(command);
+        expect(source.usingDrive, true);
+        local.events.add(
+          LibrarySnapshot(
+            importRevision: ++revision,
+            canPickFiles: true,
+            canScanDevice: true,
+            tracks: const [Track(id: 'local', title: 'Local')],
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(source.usingDrive, false);
+        expect(local.commands.last, command);
+        expect(source.localSnapshot.canPickFiles, true);
+      }
+    },
+  );
+
+  for (final command in ['pickFolder', 'pickFiles', 'scanDevice']) {
+    for (final outcome in ['cancel', 'denied', 'empty', 'failed', 'thrown']) {
+      test('$command $outcome preserves active Drive source and playback', () async {
+        final p = FakeDrivePlatform();
+        final d = DriveGateway(platform: p, client: apiClient());
+        final local = FakeLocalGateway();
+        final source = SourceMusicGateway(local: local, drive: d);
+        addTearDown(source.dispose);
+        await source.initialize();
+        await d.connect();
+        await source.command('driveUseFolder');
+        await source.command('play', {'id': 'gdrive:one'});
+        final stops = p.stopCount;
+        final snapshots = <LibrarySnapshot>[];
+        final sub = source.snapshots.listen(snapshots.add);
+        addTearDown(sub.cancel);
+        if (outcome == 'thrown') {
+          local.commandFailure = StateError('import failure');
+        }
+        final pending = source.command(command);
+        // No await, including drive.stop(), may precede the local picker call.
+        expect(local.commands.last, command);
+        if (outcome == 'thrown') {
+          await expectLater(pending, throwsStateError);
+        } else {
+          await pending;
+          if (outcome != 'cancel') {
+            local.events.add(
+              LibrarySnapshot(
+                sourceKind: 'android',
+                message: outcome,
+                // Even an incorrect success marker cannot switch to an empty source.
+                importRevision: outcome == 'empty' ? 1 : 0,
+              ),
+            );
+          }
+        }
+        await Future<void>.delayed(Duration.zero);
+        expect(source.usingDrive, true);
+        expect(d.snapshot.isPlaying, true);
+        expect(d.snapshot.currentTrackId, 'gdrive:one');
+        expect(p.stopCount, stops);
+        expect(snapshots.every((s) => s.sourceKind == 'googleDrive'), true);
+      });
+    }
+  }
+
+  test('staged Android scan exposes progress and cancels local work without stopping Drive', () async {
+    final p = FakeDrivePlatform();
+    final d = DriveGateway(platform: p, client: apiClient());
+    final local = FakeLocalGateway();
+    final source = SourceMusicGateway(local: local, drive: d);
+    final c = MusicController(gateway: source);
+    addTearDown(c.dispose);
+    await c.initialize();
+    await d.connect();
+    await c.useDriveFolder();
+    await c.play(c.snapshot.tracks.first);
+    final stops = p.stopCount;
+    await c.scanDevice();
+    local.events.add(
+      const LibrarySnapshot(
+        sourceKind: 'android',
+        isScanning: true,
+        message: '正在扫描本机音乐…',
+      ),
+    );
+    expect(c.usingDrive, true);
+    expect(c.snapshot.isPlaying, true);
+    expect(c.isLocalImportScanning, true);
+    expect(c.isBusy, true);
+    expect(c.localImportMessage, '正在扫描本机音乐…');
+    expect(c.error, null);
+    final calls = local.commands.length;
+    await c.pickFolder();
+    expect(local.commands.length, calls);
+    await c.cancelLocalImport();
+    expect(local.commands.last, 'cancelImport');
+    expect(c.isLocalImportScanning, false);
+    expect(c.isBusy, false);
+    expect(c.snapshot.isPlaying, true);
+    expect(p.stopCount, stops);
+    // A late success after cancellation is not authorization to switch sources.
+    local.events.add(
+      const LibrarySnapshot(
+        importRevision: 1,
+        tracks: [Track(id: 'late', title: 'Late')],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(c.usingDrive, true);
+    expect(p.stopCount, stops);
+  });
+
+  test(
+    'failed staged scan is visible and dismissible while Drive keeps playing',
+    () async {
+      final p = FakeDrivePlatform();
+      final d = DriveGateway(platform: p, client: apiClient());
+      final local = FakeLocalGateway();
+      final source = SourceMusicGateway(local: local, drive: d);
+      final c = MusicController(gateway: source);
+      addTearDown(c.dispose);
+      await c.initialize();
+      await d.connect();
+      await c.useDriveFolder();
+      await c.play(c.snapshot.tracks.first);
+      await c.scanDevice();
+      local.events.add(
+        const LibrarySnapshot(
+          sourceKind: 'android',
+          message: '未授予音乐读取权限，原资料库已保留。',
+        ),
+      );
+      expect(c.error, contains('未授予'));
+      expect(c.snapshot.isPlaying, true);
+      expect(c.isBusy, false);
+      expect(c.usingDrive, true);
+      c.clearError();
+      expect(c.error, null);
+    },
+  );
+
+  test('only completed nonempty import commits, and stale success cannot override newer Drive selection', () async {
+    final p = FakeDrivePlatform();
+    final d = DriveGateway(platform: p, client: apiClient());
+    final local = FakeLocalGateway();
+    final source = SourceMusicGateway(local: local, drive: d);
+    addTearDown(source.dispose);
+    await source.initialize();
+    await d.connect();
+    await source.command('driveUseFolder');
+    await source.command('play', {'id': 'gdrive:one'});
+    final stops = p.stopCount;
+    await source.command('pickFolder');
+    local.events.add(
+      const LibrarySnapshot(
+        isScanning: true,
+        tracks: [Track(id: 'part', title: 'Partial')],
+      ),
+    );
+    expect(source.usingDrive, true);
+    expect(p.stopCount, stops);
+    local.events.add(
+      const LibrarySnapshot(
+        importRevision: 1,
+        tracks: [Track(id: 'done', title: 'Done')],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(source.usingDrive, false);
+    expect(p.stopCount, stops + 1);
+    await source.command('driveUseFolder');
+    await source.command('pickFiles');
+    await source.command('driveUseFolder');
+    final newerStops = p.stopCount;
+    local.events.add(
+      const LibrarySnapshot(
+        importRevision: 2,
+        tracks: [Track(id: 'late', title: 'Late')],
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(source.usingDrive, true);
+    expect(p.stopCount, newerStops);
+  });
   test('未配置与初始化不会请求 Google 授权', () async {
     final p = FakeDrivePlatform()..enabled = false;
     final d = DriveGateway(platform: p, client: apiClient());
