@@ -9,6 +9,7 @@ import 'lyrics_factory.dart';
 import 'lyrics_models.dart';
 import 'lyrics_matching.dart';
 import 'lyrics_platform.dart';
+import 'lyrics_script.dart';
 
 /// 自动搜索须先由用户开启；仅发送歌名、歌手与可选专辑，不发送音频或路径。
 class LyricsController extends ChangeNotifier {
@@ -31,12 +32,45 @@ class LyricsController extends ChangeNotifier {
   bool get searchingAutomatically => _busy && _automaticSearch;
   Object? get selectionIdentity => _key;
   LyricsDocument? _document;
-  LyricsDocument? get document => _document;
+  bool _preferSimplified = true;
+  bool get preferSimplified => _preferSimplified;
+  LyricsDocument? _simplifiedSource, _simplifiedDocument;
+  LyricsDocument? get originalDocument => _document;
+  LyricsDocument? get document {
+    if (!_preferSimplified || _document == null) return _document;
+    if (!identical(_simplifiedSource, _document)) {
+      _simplifiedSource = _document;
+      _simplifiedDocument = _document!.simplified();
+    }
+    return _simplifiedDocument;
+  }
+
+  Future<void> setPreferSimplified(bool value) async {
+    await initialize();
+    if (_disposed || value == _preferSimplified) return;
+    _preferSimplified = value;
+    notifyListeners();
+    final write = _pendingWrite.then(
+      (_) => _platform.writeCache(_serializeCache()),
+    );
+    _pendingWrite = write.catchError((Object _) {});
+    try {
+      await write;
+    } catch (_) {
+      if (!_disposed) {
+        _notice = '字形设置仅在本次使用中有效，无法保存到本机。';
+        notifyListeners();
+      }
+    }
+  }
+
   List<LyricsCandidate> _candidates = const [];
   List<LyricsCandidate> get candidates => _candidates;
   String? _error, _notice;
   String? get error => _error;
   String? get notice => _notice;
+  String? _searchStage;
+  String? get searchStage => _busy ? _searchStage : null;
   bool _busy = false, _disposed = false, _searchInFlight = false;
   bool get busy => _busy;
   int _generation = 0;
@@ -59,6 +93,7 @@ class LyricsController extends ChangeNotifier {
       final value = jsonDecode(raw) as Map<String, dynamic>;
       if (value['version'] != 1) throw const FormatException('未知缓存版本');
       _automaticEnabled = value['automaticSearch'] == true;
+      _preferSimplified = value['preferSimplified'] != false;
       final entries = value['entries'] as Map<String, dynamic>;
       for (final entry in entries.entries.take(100)) {
         try {
@@ -289,8 +324,8 @@ class LyricsController extends ChangeNotifier {
     title = title.trim();
     artist = artist.trim();
     album = album.trim();
-    if (title.isEmpty || (!automatic && artist.isEmpty)) {
-      _error = '请输入歌名和歌手，以免下载错误版本的歌词。';
+    if (title.isEmpty) {
+      _error = '请输入歌名；补充歌手可提高搜索准确度。';
       notifyListeners();
       return;
     }
@@ -302,30 +337,93 @@ class LyricsController extends ChangeNotifier {
     _autoTimer?.cancel();
     final revision = ++_generation;
     _busy = true;
+    _searchStage = '正在搜索歌曲信息…';
     _automaticSearch = automatic;
     _searchInFlight = true;
     _candidates = const [];
+    final queryTrack = _track!.copyWith(
+      title: title,
+      artist: artist,
+      album: album,
+    );
+    final collected = <String, LyricsCandidate>{};
     notifyListeners();
     try {
-      var results = await _request(title, artist, album);
-      if (!_isCurrent(revision)) return;
-      // 专辑标签可能来自精选集或文件夹；无结果时放宽专辑，不放宽版本核验。
-      if (automatic && results.isEmpty && album.isNotEmpty) {
-        results = await _request(title, artist, '');
+      // 每次最多五次请求：原始标签、去专辑、简/繁字形、手动仅歌名。
+      // 不删除歌名中的版本标记，不向其他数据源传送信息。
+      final queries =
+          <({String title, String artist, String album, String stage})>[
+            (title: title, artist: artist, album: album, stage: '正在搜索歌曲信息…'),
+            if (album.isNotEmpty)
+              (title: title, artist: artist, album: '', stage: '正在忽略专辑标签重试…'),
+            (
+              title: simplifyChinese(title),
+              artist: simplifyChinese(artist),
+              album: '',
+              stage: '正在尝试简体标签…',
+            ),
+            (
+              title: traditionalChinese(title),
+              artist: traditionalChinese(artist),
+              album: '',
+              stage: '正在尝试繁体标签…',
+            ),
+            if (!automatic && artist.isNotEmpty)
+              (title: title, artist: '', album: '', stage: '正在按歌名扩大搜索，请核对歌手…'),
+          ];
+      final visited = <String>{};
+      var broadened = false;
+      for (final query in queries) {
         if (!_isCurrent(revision)) return;
+        if (!visited.add(
+          jsonEncode([query.title, query.artist, query.album]),
+        )) {
+          continue;
+        }
+        _searchStage = query.stage;
+        notifyListeners();
+        // 监听器可同步取消搜索，取消后绝不再发出后备请求。
+        if (!_isCurrent(revision)) return;
+        if (visited.length > 1) {
+          // LRCLIB 建议相邻请求间隔 200–500ms，不并行轰炸后备查询。
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          if (!_isCurrent(revision)) return;
+        }
+        final batch = await _request(query.title, query.artist, query.album);
+        if (!_isCurrent(revision)) return;
+        for (final candidate in batch) {
+          // 相同 ID 若返回不同时间轴/元数据，仍保留歧义而不是静默覆盖。
+          final identity = jsonEncode([
+            candidate.id,
+            candidate.title,
+            candidate.artist,
+            candidate.album,
+            candidate.duration.inMilliseconds,
+            candidate.document.text,
+            candidate.document.instrumental,
+          ]);
+          collected.putIfAbsent(identity, () => candidate);
+        }
+        broadened = query.artist.isEmpty;
+        final values = collected.values.toList();
+        if (automatic
+            ? confidentLyricsMatch(queryTrack, values) != null
+            : values.any(
+                (candidate) => lyricsIdentityMatches(queryTrack, candidate),
+              )) {
+          break;
+        }
       }
-      if (automatic) {
-        results.sort(
-          (a, b) => lyricsMatchScore(
-            _track!,
-            b,
-          ).compareTo(lyricsMatchScore(_track!, a)),
-        );
-      }
+      final results = rankLyricsCandidates(
+        queryTrack,
+        collected.values.toList(),
+      );
       _candidates = List.unmodifiable(results);
       _notice = results.isEmpty
-          ? '没有找到歌词。可修改歌名/歌手、清空专辑后再试，或导入本地 LRC / TXT。'
-          : '请选择对应版本。搜索结果可能不准确，请核对歌手、专辑和时长。';
+          ? '没有找到可用歌词。已尝试可用的标签组合；LRCLIB 可能尚未收录。可修改歌名/歌手，或导入本地 LRC / TXT。'
+          : broadened
+          ? '已扩大到仅按歌名搜索，结果可能包含其他歌手。请先预览并核对版本。'
+          : '找到 ${results.length} 个版本，其中 ${results.where((c) => c.document.isSynced).length} 个有逐行时间轴。请选择并预览。';
       if (automatic) {
         final match = confidentLyricsMatch(_track!, results);
         if (match != null) {
@@ -339,7 +437,17 @@ class LyricsController extends ChangeNotifier {
         }
       }
     } catch (error) {
-      if (_isCurrent(revision)) _error = _message(error);
+      if (_isCurrent(revision)) {
+        _error = _message(error);
+        if (collected.isNotEmpty) {
+          // 后续标签补全也不得将不完整搜索升级为自动选择。
+          _automaticSearch = false;
+          _candidates = List.unmodifiable(
+            rankLyricsCandidates(queryTrack, collected.values.toList()),
+          );
+          _notice = '部分搜索未完成，已保留 ${collected.length} 个结果。请预览核对后手动选择，或稍后重试。';
+        }
+      }
     } finally {
       _searchInFlight = false;
       if (_isCurrent(revision)) {
@@ -404,6 +512,7 @@ class LyricsController extends ChangeNotifier {
     if (_disposed || _busy || _key == null) return;
     final revision = ++_generation;
     _busy = true;
+    _searchStage = null;
     _error = null;
     notifyListeners();
     try {
@@ -442,6 +551,7 @@ class LyricsController extends ChangeNotifier {
     final current = revision ?? ++_generation;
     final key = _cacheKey!;
     _busy = true;
+    _searchStage = null;
     _error = null;
     notifyListeners();
     await initialize();
@@ -482,6 +592,7 @@ class LyricsController extends ChangeNotifier {
   String _serializeCache() => jsonEncode({
     'version': 1,
     'automaticSearch': _automaticEnabled,
+    'preferSimplified': _preferSimplified,
     'entries': _cache.map((key, value) => MapEntry(key, value.toJson())),
     'automaticMatches': _automaticMatches.map(
       (key, value) => MapEntry(key, {

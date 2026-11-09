@@ -187,8 +187,8 @@ void main() {
         artist: ' Edited artist ',
         album: '',
       );
-      expect(platform.queries.single.host, 'lrclib.net');
-      expect(platform.queries.single.queryParameters, {
+      expect(platform.queries.first.host, 'lrclib.net');
+      expect(platform.queries.first.queryParameters, {
         'track_name': 'Edited title',
         'artist_name': 'Edited artist',
       });
@@ -203,8 +203,8 @@ void main() {
       'required metadata and length validation never query the provider',
       () async {
         c.selectTrack(a);
-        await c.search(title: 'Song', artist: '', album: '');
-        expect(c.error, contains('歌手'));
+        await c.search(title: '', artist: '', album: '');
+        expect(c.error, contains('歌名'));
         await c.search(title: 'a' * 301, artist: 'Artist', album: '');
         expect(platform.queries, isEmpty);
       },
@@ -288,7 +288,11 @@ void main() {
       now = now.add(const Duration(seconds: 122));
       platform.response = const LyricsHttpResponse(200, '[]');
       await c.search(title: a.title, artist: a.artist, album: '');
-      expect(platform.queries.length, 2);
+      expect(platform.queries.length, 3);
+      expect(
+        platform.queries.last.queryParameters.containsKey('artist_name'),
+        false,
+      );
     });
     test('503 HTTP-date Retry-After and missing header fallback', () async {
       c.dispose();

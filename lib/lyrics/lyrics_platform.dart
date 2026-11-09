@@ -14,6 +14,6 @@ abstract interface class LyricsPlatform {
 }
 
 const lyricsClientIdentity =
-    'CloudMusic/0.4.0 (https://github.com/KingXcode/cloud-music)';
+    'CloudMusic/0.6.1 (https://github.com/KingXcode/cloud-music)';
 const maxLyricsCacheBytes = 2 * 1024 * 1024;
 const maxLyricsResponseBytes = 4 * 1024 * 1024;

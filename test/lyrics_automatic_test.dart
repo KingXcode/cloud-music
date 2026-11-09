@@ -68,6 +68,10 @@ class AutomaticPlatform implements LyricsPlatform {
 
 Future<void> settleAutomatic(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 701));
+  // Bounded fallback queries are deliberately spaced by 250ms.
+  for (var stage = 0; stage < 4; stage++) {
+    await tester.pump(const Duration(milliseconds: 251));
+  }
   await tester.pump();
 }
 

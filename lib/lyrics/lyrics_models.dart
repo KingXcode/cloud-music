@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'lyrics_script.dart';
+
 const maxLyricsBytes = 256 * 1024;
 
 class LyricLine {
@@ -102,6 +104,17 @@ class LyricsDocument {
   final bool instrumental;
   bool get isSynced => lines.isNotEmpty;
   bool get isEmpty => !instrumental && text.trim().isEmpty;
+
+  /// A reversible display copy. Source text in the cache remains untouched,
+  /// and timestamps/offsets are retained exactly rather than parsed twice.
+  LyricsDocument simplified() => LyricsDocument._(
+    text: simplifyChinese(text),
+    lines: List.unmodifiable(
+      lines.map((line) => LyricLine(line.time, simplifyChinese(line.text))),
+    ),
+    source: source,
+    instrumental: instrumental,
+  );
 
   int activeLineIndex(Duration position) {
     var low = 0, high = lines.length - 1, result = -1;

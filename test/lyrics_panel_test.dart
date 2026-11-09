@@ -135,7 +135,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 750));
     await tester.pumpAndSettle();
     expect(controller.automaticEnabled, true);
-    expect(platform.requests, hasLength(1));
+    expect(platform.requests, hasLength(2));
     expect(controller.candidates, hasLength(1));
     expect(find.textContaining('找到 1 个歌词版本'), findsOneWidget);
     await _tap(tester, 'lyrics-options');
@@ -267,6 +267,18 @@ void main() {
     await tester.enterText(_key('lyrics-query-title'), '  New test song  ');
     await tester.enterText(_key('lyrics-query-artist'), 'New test singer');
     await tester.enterText(_key('lyrics-query-album'), '');
+    platform.response = LyricsHttpResponse(
+      200,
+      jsonEncode([
+        {
+          'id': 703,
+          'trackName': 'New test song',
+          'artistName': 'New test singer',
+          'duration': 90,
+          'plainLyrics': 'An invented test horizon',
+        },
+      ]),
+    );
     await _tap(tester, 'lyrics-consent-confirm');
     expect(platform.requests, hasLength(1));
     expect(platform.requests.single.host, 'lrclib.net');
@@ -296,8 +308,14 @@ void main() {
       expect(platform.writes, isEmpty);
       expect(controller.document, isNull);
       expect(_key('lyrics-candidate-701'), findsOneWidget);
-      expect(find.textContaining('时长与当前歌曲相差超过 2 秒'), findsOneWidget);
+      expect(find.textContaining('时长相差 5.0 秒'), findsOneWidget);
       await _tap(tester, 'lyrics-candidate-701');
+      expect(platform.writes, isEmpty);
+      expect(_key('lyrics-preview-dialog'), findsOneWidget);
+      await _tap(tester, 'lyrics-preview-cancel');
+      expect(controller.document, isNull);
+      await _tap(tester, 'lyrics-candidate-701');
+      await _tap(tester, 'lyrics-preview-save');
       expect(platform.writes, hasLength(1));
       expect(controller.document?.isSynced, isTrue);
       expect(_key('lyrics-candidates'), findsNothing);
@@ -335,6 +353,7 @@ void main() {
       // 搜索期间保留已有的导入歌词，直到用户选择新版本。
       expect(_key('lyrics-plain'), findsOneWidget);
       await _tap(tester, 'lyrics-candidate-702');
+      await _tap(tester, 'lyrics-preview-save');
       expect(controller.document?.instrumental, isTrue);
       expect(find.text('纯音乐 · 无歌词'), findsOneWidget);
       expect(_key('lyrics-plain'), findsNothing);
@@ -395,6 +414,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await _tap(tester, 'lyrics-candidate-701');
       expect(tester.takeException(), isNull);
+      await _tap(tester, 'lyrics-preview-save');
       await _tap(tester, 'lyrics-paste');
       await tester.enterText(
         _key('lyrics-paste-input'),
@@ -406,4 +426,85 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('preview cannot save after switching to another song', (
+    tester,
+  ) async {
+    final platform = _Platform();
+    final controller = await _mount(tester, platform);
+    await _consentedSearch(tester);
+    await _tap(tester, 'lyrics-candidate-701');
+    controller.selectTrack(_track.copyWith(title: 'A new song'));
+    await tester.pumpAndSettle();
+    final button = tester.widget<FilledButton>(_key('lyrics-preview-save'));
+    expect(button.onPressed, isNull);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(controller.document, isNull);
+    expect(platform.writes, isEmpty);
+  });
+
+  testWidgets(
+    'original and simplified display are reversible without network',
+    (tester) async {
+      final platform = _Platform();
+      final controller = await _mount(tester, platform);
+      await controller.importText('[00:01]虛構紙船向遠方');
+      await tester.pumpAndSettle();
+      expect(find.text('虚构纸船向远方'), findsOneWidget);
+      await _tap(tester, 'lyrics-script-original');
+      expect(find.text('虛構紙船向遠方'), findsOneWidget);
+      await _tap(tester, 'lyrics-script-simplified');
+      expect(find.text('虚构纸船向远方'), findsOneWidget);
+      expect(controller.originalDocument!.text, '[00:01]虛構紙船向遠方');
+      expect(platform.requests, isEmpty);
+    },
+  );
+
+  testWidgets('synced filter explains plain-only results and can be reset', (
+    tester,
+  ) async {
+    final platform = _Platform()
+      ..response = LyricsHttpResponse(
+        200,
+        jsonEncode([
+          {
+            'id': 704,
+            'trackName': _track.title,
+            'artistName': _track.artist,
+            'duration': 90,
+            'plainLyrics': 'An original paper harbor',
+          },
+        ]),
+      );
+    await _mount(tester, platform);
+    await _consentedSearch(tester);
+    await _tap(tester, 'lyrics-filter-synced');
+    expect(_key('lyrics-candidate-704'), findsNothing);
+    expect(find.textContaining('没有同步时间轴'), findsOneWidget);
+    await _tap(tester, 'lyrics-filter-all');
+    expect(_key('lyrics-candidate-704'), findsOneWidget);
+    expect(platform.writes, isEmpty);
+  });
+
+  testWidgets('artist may be empty and successful edited query is retained', (
+    tester,
+  ) async {
+    final platform = _Platform();
+    await _mount(tester, platform);
+    await _tap(tester, 'lyrics-search');
+    await tester.enterText(_key('lyrics-query-title'), 'Edited title');
+    await tester.enterText(_key('lyrics-query-artist'), '');
+    await tester.enterText(_key('lyrics-query-album'), '');
+    await _tap(tester, 'lyrics-consent-confirm');
+    expect(platform.requests.first.queryParameters, {
+      'track_name': 'Edited title',
+    });
+    await _tap(tester, 'lyrics-search');
+    expect(
+      tester.widget<TextField>(_key('lyrics-query-title')).controller!.text,
+      'Edited title',
+    );
+    await _tap(tester, 'lyrics-consent-cancel');
+  });
 }

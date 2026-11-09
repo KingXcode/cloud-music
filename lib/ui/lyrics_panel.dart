@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../lyrics/lyrics_controller.dart';
 import '../lyrics/lyrics_models.dart';
+import '../lyrics/lyrics_matching.dart';
+import '../lyrics/lyrics_script.dart';
 
 /// 仅在局部重建的歌词视图；自动联网状态由用户的一次性授权控制。
 class LyricsPanel extends StatefulWidget {
@@ -29,6 +31,10 @@ class _LyricsPanelState extends State<LyricsPanel> {
   int _lastActive = -2;
   bool _follow = true;
   bool _dialogOpen = false;
+  bool _optionsOpen = false;
+  bool _syncedOnly = false;
+  List<String>? _lastQuery;
+  Object? _querySelection;
   StateSetter? _refreshSheet;
 
   @override
@@ -87,9 +93,9 @@ class _LyricsPanelState extends State<LyricsPanel> {
     final query = await showDialog<List<String>>(
       context: context,
       builder: (_) => _SearchConsentDialog(
-        title: track.title,
-        artist: track.artist,
-        album: track.album,
+        title: _querySelection == selection ? _lastQuery![0] : track.title,
+        artist: _querySelection == selection ? _lastQuery![1] : track.artist,
+        album: _querySelection == selection ? _lastQuery![2] : track.album,
       ),
     );
     if (!mounted) return;
@@ -101,6 +107,9 @@ class _LyricsPanelState extends State<LyricsPanel> {
         c.busy) {
       return;
     }
+    _lastQuery = query;
+    _querySelection = selection;
+    setState(() => _syncedOnly = false);
     await c.search(title: query[0], artist: query[1], album: query[2]);
   }
 
@@ -120,7 +129,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
         title: const Text('开启自动歌词'),
         scrollable: true,
         content: const Text(
-          '开启后，播放所选歌曲时会自动向 LRCLIB（lrclib.net）发送歌名、歌手和可选专辑名；该服务也会看到你的 IP 地址。不会上传音频、文件路径或时长，也不会扫描整库联网。\n\n'
+          '开启后，播放所选歌曲时会自动向 LRCLIB（lrclib.net）发送歌名、歌手和可选专辑名，包括繁简字形变体；该服务也会看到你的 IP 地址。无结果时会省略专辑再查找。不会上传音频、文件路径或时长，也不会扫描整库联网。\n\n'
           '仅在歌名、歌手、版本和时长匹配可靠时自动保存歌词；不确定时由你选择。歌词仅缓存到本机，版权归原权利人，请仅在获准使用时下载。\n\n'
           '记住本机选择，之后无需逐曲确认。可随时在歌词选项中关闭。',
         ),
@@ -215,7 +224,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
             if (document != null) ...[
               const SizedBox(height: 8),
               Text(
-                '来源：${document.source}',
+                '来源：${document.source} · ${c.preferSimplified ? '简体显示' : '原文显示'}',
                 key: const Key('lyrics-source'),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
@@ -231,38 +240,99 @@ class _LyricsPanelState extends State<LyricsPanel> {
     },
   );
 
+  Future<void> _preview(LyricsCandidate candidate) async {
+    final c = widget.controller;
+    final selection = c.selectionIdentity;
+    if (_dialogOpen || c.busy) return;
+    setState(() => _dialogOpen = true);
+    _refreshSheet?.call(() {});
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _LyricsPreviewDialog(
+        controller: c,
+        candidate: candidate,
+        selection: selection,
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _dialogOpen = false);
+    _refreshSheet?.call(() {});
+    if (accepted == true &&
+        c == widget.controller &&
+        c.selectionIdentity == selection &&
+        !c.busy) {
+      await c.choose(candidate);
+    }
+  }
+
   List<Widget> _management(BuildContext context) {
     final c = widget.controller;
     final enabled = c.track != null && !c.busy && !_dialogOpen;
+    final colors = Theme.of(context).colorScheme;
+    final candidates = c.candidates
+        .where((candidate) => !_syncedOnly || candidate.document.isSynced)
+        .toList();
     return [
-      Material(
-        color: Colors.transparent,
-        child: SwitchListTile.adaptive(
-          key: const Key('lyrics-auto-switch'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('自动搜索歌词'),
-          subtitle: Text(
-            c.automaticEnabled
-                ? '已开启 · LRCLIB · 仅发送歌曲信息，不上传音频'
-                : '一次开启，播放时自动匹配并缓存到本机',
+      if (c.track != null)
+        Container(
+          key: const Key('lyrics-track-summary'),
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(
+            color: colors.surfaceContainerHighest.withValues(alpha: .5),
+            borderRadius: BorderRadius.circular(16),
           ),
-          value: c.automaticEnabled,
-          onChanged: _dialogOpen ? null : _toggleAutomatic,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.music_note_rounded, color: colors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      c.track!.title,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      [
+                        c.track!.artist.isEmpty
+                            ? '歌手未知，可编辑搜索'
+                            : c.track!.artist,
+                        if (c.track!.duration > Duration.zero)
+                          _duration(c.track!.duration),
+                      ].join(' · '),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      c.document == null
+                          ? '尚未保存歌词'
+                          : '已在本机 · ${_kind(c.document!)}',
+                      style: TextStyle(color: colors.primary, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
-          OutlinedButton(
+          FilledButton.icon(
             key: const Key('lyrics-search'),
             onPressed: enabled ? _search : null,
-            child: Text(c.error == null ? '搜索下载' : '重试搜索'),
+            icon: const Icon(Icons.search),
+            label: Text(c.error == null ? '搜索歌词' : '修改并重试'),
           ),
-          OutlinedButton(
+          OutlinedButton.icon(
             key: const Key('lyrics-import'),
             onPressed: enabled ? c.importFile : null,
-            child: const Text('导入 LRC / TXT'),
+            icon: const Icon(Icons.file_open_outlined),
+            label: const Text('导入 LRC / TXT'),
           ),
           TextButton(
             key: const Key('lyrics-paste'),
@@ -278,77 +348,174 @@ class _LyricsPanelState extends State<LyricsPanel> {
         ],
       ),
       if (c.busy) ...[
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
         const LinearProgressIndicator(key: Key('lyrics-loading')),
-        Text(c.searchingAutomatically ? '正在自动匹配歌词…' : '正在处理歌词…'),
+        const SizedBox(height: 8),
+        Text(c.searchStage ?? '正在保存到本机…'),
       ],
       if (c.error != null)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             c.error!,
             key: const Key('lyrics-error'),
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(color: colors.error),
           ),
         ),
       if (c.retryAfter != null)
         Text('服务请求过多，请约 ${c.retryAfter!.inSeconds + 1} 秒后重试。'),
       if (c.notice != null)
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(c.notice!, key: const Key('lyrics-notice')),
         ),
       if (c.candidates.isNotEmpty) ...[
         const SizedBox(height: 8),
-        const Text('请选择匹配版本；选中后才会替换当前歌词。'),
-        SizedBox(
-          height: 220,
-          child: ListView.separated(
+        Text(
+          '找到 ${c.candidates.length} 个版本 · 先预览，再保存',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            ChoiceChip(
+              key: const Key('lyrics-filter-all'),
+              label: const Text('全部'),
+              selected: !_syncedOnly,
+              onSelected: (_) {
+                setState(() => _syncedOnly = false);
+                _refreshSheet?.call(() {});
+              },
+            ),
+            ChoiceChip(
+              key: const Key('lyrics-filter-synced'),
+              label: const Text('仅逐行同步'),
+              selected: _syncedOnly,
+              onSelected: (_) {
+                setState(() => _syncedOnly = true);
+                _refreshSheet?.call(() {});
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (candidates.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Text('这些结果没有同步时间轴。选择「全部」可预览纯文本歌词。'),
+          )
+        else
+          ListView.separated(
             key: const Key('lyrics-candidates'),
             primary: false,
-            itemCount: c.candidates.length,
-            separatorBuilder: (_, _) => const Divider(),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: candidates.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
-              final candidate = c.candidates[index];
-              final trackDuration = c.track?.duration ?? Duration.zero;
-              final mismatch =
-                  trackDuration > Duration.zero &&
-                  candidate.duration > Duration.zero &&
-                  (candidate.duration - trackDuration).inMilliseconds.abs() >
-                      2000;
-              final kind = candidate.document.instrumental
-                  ? '纯音乐'
-                  : candidate.document.isSynced
-                  ? '逐行同步'
-                  : '纯文本';
+              final candidate = candidates[index];
+              final warning = _candidateWarning(c, candidate);
               return Material(
-                color: Colors.transparent,
+                color: colors.surfaceContainerHighest.withValues(alpha: .4),
+                borderRadius: BorderRadius.circular(14),
+                clipBehavior: Clip.antiAlias,
                 child: ListTile(
                   key: ValueKey('lyrics-candidate-${candidate.id}'),
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(candidate.title),
-                  subtitle: Text(
-                    [
-                      candidate.artist.isEmpty ? '歌手未知' : candidate.artist,
-                      if (candidate.album.isNotEmpty) candidate.album,
-                      '${_duration(candidate.duration)} · $kind',
-                      if (mismatch) '时长与当前歌曲相差超过 2 秒，请核对版本',
-                    ].join('\n'),
-                    style: TextStyle(
-                      color: mismatch ? const Color(0xFFFFB86B) : null,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  title: Text(
+                    candidate.title,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          [
+                            candidate.artist.isEmpty
+                                ? '歌手未知'
+                                : candidate.artist,
+                            if (candidate.album.isNotEmpty) candidate.album,
+                          ].join(' · '),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${_duration(candidate.duration)} · '
+                          '${_kind(candidate.document)} · LRCLIB',
+                        ),
+                        if (warning != null) ...[
+                          const SizedBox(height: 6),
+                          Text(warning, style: TextStyle(color: colors.error)),
+                        ],
+                        const SizedBox(height: 6),
+                        Text('预览歌词', style: TextStyle(color: colors.primary)),
+                      ],
                     ),
                   ),
-                  onTap: enabled ? () => c.choose(candidate) : null,
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: enabled ? () => _preview(candidate) : null,
                 ),
               );
             },
           ),
-        ),
       ],
+      const SizedBox(height: 20),
+      const Divider(),
+      const SizedBox(height: 12),
+      const Text('歌词文字', style: TextStyle(fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          ChoiceChip(
+            key: const Key('lyrics-script-simplified'),
+            label: const Text('简体中文'),
+            selected: c.preferSimplified,
+            onSelected: (_) => c.setPreferSimplified(true),
+          ),
+          ChoiceChip(
+            key: const Key('lyrics-script-original'),
+            label: const Text('保留原文'),
+            selected: !c.preferSimplified,
+            onSelected: (_) => c.setPreferSimplified(false),
+          ),
+        ],
+      ),
+      const SizedBox(height: 6),
+      Text(
+        '仅在本机转换中文字形，保留原始歌词和时间轴；不是翻译。',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 12),
+      Material(
+        color: Colors.transparent,
+        child: SwitchListTile.adaptive(
+          key: const Key('lyrics-auto-switch'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('自动搜索歌词'),
+          subtitle: Text(
+            c.automaticEnabled
+                ? '已开启 · 可靠匹配后自动保存，不确定时由你选择'
+                : '可选开启 · 只为播放的歌曲查找，不扫描整库',
+          ),
+          value: c.automaticEnabled,
+          onChanged: _dialogOpen ? null : _toggleAutomatic,
+        ),
+      ),
     ];
   }
 
   Future<void> _showOptions() async {
+    if (_optionsOpen) return;
+    registerLyricsConversionLicense();
+    _optionsOpen = true;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -371,7 +538,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Text(
-                      '歌词选项',
+                      '查找与管理歌词',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
@@ -391,6 +558,14 @@ class _LyricsPanelState extends State<LyricsPanel> {
                       '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
                       style: TextStyle(fontSize: 12),
                     ),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton(
+                        key: const Key('lyrics-conversion-license'),
+                        onPressed: () => showLicensePage(context: context),
+                        child: const Text('字形转换开源许可 · OpenCC'),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -400,6 +575,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
       ),
     );
     _refreshSheet = null;
+    _optionsOpen = false;
   }
 
   Widget _immersive(
@@ -615,6 +791,150 @@ class _LyricsPanelState extends State<LyricsPanel> {
 String _duration(Duration duration) =>
     '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
 
+String _kind(LyricsDocument document) => document.instrumental
+    ? '纯音乐'
+    : document.isSynced
+    ? '逐行同步'
+    : '纯文本';
+
+String? _candidateWarning(
+  LyricsController controller,
+  LyricsCandidate candidate,
+) {
+  final track = controller.track;
+  if (track == null) return null;
+  final warnings = <String>[];
+  if (normalizeLyricsIdentity(track.title) !=
+      normalizeLyricsIdentity(candidate.title)) {
+    warnings.add('歌名或版本标记不同');
+  }
+  if (track.artist.isNotEmpty &&
+      normalizeLyricsIdentity(track.artist) !=
+          normalizeLyricsIdentity(candidate.artist)) {
+    warnings.add('歌手不同');
+  }
+  if (track.duration > Duration.zero && candidate.duration > Duration.zero) {
+    final delta = (candidate.duration - track.duration).inMilliseconds.abs();
+    if (delta > 3000) {
+      warnings.add('时长相差 ${(delta / 1000).toStringAsFixed(1)} 秒');
+    }
+  } else {
+    warnings.add('时长未知');
+  }
+  return warnings.isEmpty ? null : '${warnings.join(' · ')}，请核对';
+}
+
+class _LyricsPreviewDialog extends StatelessWidget {
+  const _LyricsPreviewDialog({
+    required this.controller,
+    required this.candidate,
+    required this.selection,
+  });
+  final LyricsController controller;
+  final LyricsCandidate candidate;
+  final Object? selection;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: controller,
+    builder: (context, _) {
+      final valid =
+          controller.selectionIdentity == selection &&
+          controller.candidates.contains(candidate) &&
+          !controller.busy;
+      final doc = controller.preferSimplified
+          ? candidate.document.simplified()
+          : candidate.document;
+      final warning = _candidateWarning(controller, candidate);
+      return AlertDialog(
+        key: const Key('lyrics-preview-dialog'),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: const Text('预览歌词'),
+        scrollable: true,
+        content: SizedBox(
+          width: 520,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                candidate.title,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                [
+                  candidate.artist,
+                  if (candidate.album.isNotEmpty) candidate.album,
+                  '${_duration(candidate.duration)} · ${_kind(doc)}',
+                ].join(' · '),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${doc.source} · ${controller.preferSimplified ? '简体显示' : '原文显示'} · 可滚动预览',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (warning != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  warning,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+              if (!valid) ...[
+                const SizedBox(height: 10),
+                const Text('当前歌曲或搜索结果已变更，请关闭后重新选择。'),
+              ],
+              const Divider(height: 28),
+              SizedBox(
+                height: (MediaQuery.sizeOf(context).height * .34).clamp(
+                  120,
+                  320,
+                ),
+                child: doc.instrumental
+                    ? const Center(child: Text('此版本标记为纯音乐，无歌词。'))
+                    : SingleChildScrollView(
+                        key: const Key('lyrics-preview-scroll'),
+                        child: SelectableText(
+                          doc.isSynced
+                              ? doc.lines
+                                    .map(
+                                      (line) =>
+                                          '${_duration(line.time)}  ${line.text}',
+                                    )
+                                    .join('\n\n')
+                              : doc.text,
+                          style: const TextStyle(height: 1.65),
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                controller.originalDocument == null
+                    ? '保存到本机后可离线显示。'
+                    : '保存后替换这首歌当前的歌词；取消不会修改。',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('lyrics-preview-cancel'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('返回结果'),
+          ),
+          FilledButton.icon(
+            key: const Key('lyrics-preview-save'),
+            onPressed: valid ? () => Navigator.pop(context, true) : null,
+            icon: const Icon(Icons.download_done),
+            label: const Text('保存到本机'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 class _SearchConsentDialog extends StatefulWidget {
   const _SearchConsentDialog({
     required this.title,
@@ -653,7 +973,7 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            '同意搜索后，LRCLIB（lrclib.net）将收到下方填写的歌名、歌手和可选专辑名，也会看到你的 IP 地址。不发送音频、文件路径或歌曲时长。\n\n选中的歌词仅缓存到本机；歌词版权归原权利人，请仅在获准使用时下载；内容和时间轴可能不准确。每次搜索均需确认。取消或返回不会发送请求。',
+            '核对歌名和歌手，可编辑搜索词，不会修改音乐标签。会逐步忽略专辑、尝试繁简字形；仍无匹配时按歌名查找，由你预览确认。',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -667,13 +987,27 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
             key: const Key('lyrics-query-artist'),
             controller: _artist,
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(labelText: '歌手（必填，可编辑）'),
+            decoration: const InputDecoration(labelText: '歌手（推荐，可留空）'),
           ),
           const SizedBox(height: 12),
           TextField(
             key: const Key('lyrics-query-album'),
             controller: _album,
             decoration: const InputDecoration(labelText: '专辑（可选）'),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            '搜索会将以上歌曲信息及繁简变体发送至 LRCLIB（lrclib.net），服务可看到你的 IP。音频、文件路径、时长不会上传。',
+            style: TextStyle(fontSize: 12),
+          ),
+          const ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: Text('来源、隐私与版权说明', style: TextStyle(fontSize: 13)),
+            children: [
+              Text(
+                'LRCLIB 是社区歌词库，可能未收录、存在不同版本或时间轴错误。只有保存后才替换当前歌词，内容仅缓存到本机。版权归原权利人，请仅在获准使用时下载。每次手动搜索均需确认，取消或返回不会发送请求。',
+              ),
+            ],
           ),
         ],
       ),
@@ -686,7 +1020,7 @@ class _SearchConsentDialogState extends State<_SearchConsentDialog> {
       ),
       FilledButton(
         key: const Key('lyrics-consent-confirm'),
-        onPressed: _title.text.trim().isEmpty || _artist.text.trim().isEmpty
+        onPressed: _title.text.trim().isEmpty
             ? null
             : () => Navigator.pop(context, [
                 _title.text.trim(),
