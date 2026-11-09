@@ -172,5 +172,36 @@ void main() {
     await capture('lyrics-preview-large-text');
     await tap('lyrics-preview-save');
     expect(tester.takeException(), isNull);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await controller.importText(
+      List.generate(
+        12,
+        (i) => '[00:${i.toString().padLeft(2, '0')}]纸船载着想象前往远方 $i',
+      ).join('\n'),
+    );
+    await mount(const Size(390, 844), 1);
+    await capture('lyrics-font-default-mobile');
+    await tap('lyrics-font-size');
+    await capture('lyrics-font-settings-mobile');
+    await controller.setFontSize(14);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await capture('lyrics-font-small-mobile');
+    await controller.setFontSize(36);
+    await mount(const Size(320, 700), 1.8);
+    await tap('lyrics-font-size');
+    await capture('lyrics-font-settings-accessibility');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await mount(const Size(844, 390), 1);
+    await capture('lyrics-font-landscape');
+    await controller.setFontSize(22);
+    await mount(const Size(1440, 900), 1);
+    await capture('lyrics-font-desktop');
+    await controller.importText('虚构纸船停在窗边\n让想象的微风吹向远方\n每一行测试都只属于这里');
+    await mount(const Size(390, 844), 1);
+    await capture('lyrics-font-plain-mobile');
   }, skip: destination == null);
 }

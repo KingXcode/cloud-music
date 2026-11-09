@@ -47,6 +47,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
   LyricsDocument? _shownDocument;
   List<GlobalKey> _lineKeys = [];
   int _lastActive = -2;
+  Object? _lastLayout;
   bool _follow = true;
   bool _dialogOpen = false;
   bool _optionsOpen = false;
@@ -61,7 +62,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
     super.dispose();
   }
 
-  void _scheduleScroll(LyricsDocument? document, int active) {
+  void _prepareDocument(LyricsDocument? document) {
     if (!identical(document, _shownDocument)) {
       _shownDocument = document;
       _lineKeys = List.generate(
@@ -71,7 +72,12 @@ class _LyricsPanelState extends State<LyricsPanel> {
       _lastActive = -2;
       _follow = true;
     }
-    if (active == _lastActive) return;
+  }
+
+  void _scheduleScroll(LyricsDocument? document, int active, Object layout) {
+    final layoutChanged = layout != _lastLayout;
+    _lastLayout = layout;
+    if (active == _lastActive && !layoutChanged) return;
     _lastActive = active;
     if (!_follow) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,6 +89,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
         return;
       }
       if (active < 0) {
+        if (layoutChanged && document?.isSynced != true) return;
         _scroll.jumpTo(0);
         return;
       }
@@ -93,7 +100,9 @@ class _LyricsPanelState extends State<LyricsPanel> {
         _scroll.position.ensureVisible(
           target,
           alignment: widget.immersive ? 0.45 : 0.4,
-          duration: const Duration(milliseconds: 420),
+          duration: layoutChanged
+              ? Duration.zero
+              : const Duration(milliseconds: 420),
           curve: Curves.easeOut,
         );
       }
@@ -202,7 +211,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
       final c = widget.controller;
       final document = c.document;
       final active = document?.activeLineIndex(widget.position) ?? -1;
-      _scheduleScroll(document, active);
+      _prepareDocument(document);
       if (widget.immersive) return _immersive(context, document, active);
       return Container(
         key: const Key('lyrics-panel'),
@@ -292,6 +301,8 @@ class _LyricsPanelState extends State<LyricsPanel> {
         .where((candidate) => !_syncedOnly || candidate.document.isSynced)
         .toList();
     return [
+      _fontSizeControls(context),
+      const SizedBox(height: 20),
       if (c.track != null)
         Container(
           key: const Key('lyrics-track-summary'),
@@ -540,7 +551,111 @@ class _LyricsPanelState extends State<LyricsPanel> {
     ];
   }
 
-  Future<void> _showOptions() async {
+  Widget _fontSizeControls(BuildContext context) {
+    final c = widget.controller;
+    final size = c.fontSize;
+    final smaller = size > LyricsController.minFontSize;
+    final larger = size < LyricsController.maxFontSize;
+    return Column(
+      key: const Key('lyrics-font-size-controls'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          children: [
+            Text(
+              '歌词字号 · ${size.toInt()}',
+              key: const Key('lyrics-font-size-value'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            CupertinoButton(
+              key: const Key('lyrics-font-size-reset'),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              onPressed: size == LyricsController.defaultFontSize
+                  ? null
+                  : () => c.setFontSize(LyricsController.defaultFontSize),
+              child: const Text('恢复默认'),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            CupertinoButton(
+              key: const Key('lyrics-font-size-decrease'),
+              onPressed: smaller ? () => c.setFontSize(size - 1) : null,
+              child: Semantics(
+                label: '减小歌词字号',
+                excludeSemantics: true,
+                child: const Text('A', style: TextStyle(fontSize: 16)),
+              ),
+            ),
+            Expanded(
+              child: Semantics(
+                key: const Key('lyrics-font-size-semantics'),
+                slider: true,
+                label: '歌词字号',
+                value: '${size.toInt()} 点',
+                increasedValue: larger ? '${size.toInt() + 1} 点' : null,
+                decreasedValue: smaller ? '${size.toInt() - 1} 点' : null,
+                onIncrease: larger ? () => c.setFontSize(size + 1) : null,
+                onDecrease: smaller ? () => c.setFontSize(size - 1) : null,
+                excludeSemantics: true,
+                child: CupertinoSlider(
+                  key: const Key('lyrics-font-size-slider'),
+                  value: size,
+                  min: LyricsController.minFontSize,
+                  max: LyricsController.maxFontSize,
+                  divisions:
+                      (LyricsController.maxFontSize -
+                              LyricsController.minFontSize)
+                          .toInt(),
+                  onChanged: c.setFontSize,
+                ),
+              ),
+            ),
+            CupertinoButton(
+              key: const Key('lyrics-font-size-increase'),
+              onPressed: larger ? () => c.setFontSize(size + 1) : null,
+              child: Semantics(
+                label: '增大歌词字号',
+                excludeSemantics: true,
+                child: const Text('A', style: TextStyle(fontSize: 26)),
+              ),
+            ),
+          ],
+        ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            '让每一句歌词，刚好看得清',
+            key: const Key('lyrics-font-size-preview'),
+            style: TextStyle(
+              fontSize: size,
+              height: 1.4,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          '所有歌曲共用，自动记住本机设置；仍跟随系统文字大小。',
+          style: TextStyle(fontSize: 12),
+        ),
+        if (c.fontSizeError != null) ...[
+          const SizedBox(height: 12),
+          Text(c.fontSizeError!, key: const Key('lyrics-font-size-error')),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _showOptions({bool fontSizeOnly = false}) async {
     if (_optionsOpen) return;
     registerLyricsConversionLicense();
     _optionsOpen = true;
@@ -590,40 +705,49 @@ class _LyricsPanelState extends State<LyricsPanel> {
                                     child: const Text('完成'),
                                   ),
                                 ),
-                                const Text(
-                                  '查找与管理歌词',
-                                  style: TextStyle(
+                                Text(
+                                  fontSizeOnly ? '歌词字号' : '查找与管理歌词',
+                                  style: const TextStyle(
                                     fontSize: 22,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 const SizedBox(height: 16),
-                                ..._management(context),
-                                if (widget.controller.document != null) ...[
+                                if (fontSizeOnly) ...[
+                                  _fontSizeControls(context),
+                                ] else
+                                  ..._management(context),
+                                if (!fontSizeOnly &&
+                                    widget.controller.document != null) ...[
                                   const SizedBox(height: 20),
                                   Text(
                                     '来源：${widget.controller.document!.source}',
                                     key: const Key('lyrics-source'),
                                   ),
                                 ],
-                                const SizedBox(height: 16),
-                                const _SelectableLyricsText(
-                                  '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: CupertinoButton(
-                                    key: const Key('lyrics-conversion-license'),
-                                    onPressed: () => Navigator.of(context).push(
-                                      CupertinoPageRoute<void>(
-                                        builder: (_) =>
-                                            const _LyricsLicensesPage(),
-                                      ),
-                                    ),
-                                    child: const Text('字形转换开源许可 · OpenCC'),
+                                if (!fontSizeOnly) ...[
+                                  const SizedBox(height: 16),
+                                  const _SelectableLyricsText(
+                                    '在线歌词来源：LRCLIB\nhttps://lrclib.net/docs',
+                                    style: TextStyle(fontSize: 12),
                                   ),
-                                ),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: CupertinoButton(
+                                      key: const Key(
+                                        'lyrics-conversion-license',
+                                      ),
+                                      onPressed: () => Navigator.of(context)
+                                          .push(
+                                            CupertinoPageRoute<void>(
+                                              builder: (_) =>
+                                                  const _LyricsLicensesPage(),
+                                            ),
+                                          ),
+                                      child: const Text('字形转换开源许可 · OpenCC'),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
@@ -662,6 +786,17 @@ class _LyricsPanelState extends State<LyricsPanel> {
                 style: TextStyle(
                   color: Color(0xB3FFFFFF),
                   fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Semantics(
+              label: '调整歌词字号',
+              child: CupertinoButton(
+                key: const Key('lyrics-font-size'),
+                onPressed: () => _showOptions(fontSizeOnly: true),
+                child: const Icon(
+                  CupertinoIcons.textformat_size,
+                  color: CupertinoColors.white,
                 ),
               ),
             ),
@@ -758,6 +893,31 @@ class _LyricsPanelState extends State<LyricsPanel> {
     bool hasTrack, {
     double viewportHeight = 0,
   }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _scheduleScroll(document, active, (
+          constraints.maxWidth,
+          constraints.maxHeight,
+          widget.controller.fontSize,
+          MediaQuery.textScalerOf(context),
+          widget.immersive,
+        ));
+        return _lyricsContent(
+          document,
+          active,
+          hasTrack,
+          viewportHeight: viewportHeight,
+        );
+      },
+    );
+  }
+
+  Widget _lyricsContent(
+    LyricsDocument? document,
+    int active,
+    bool hasTrack, {
+    double viewportHeight = 0,
+  }) {
     if (document == null ||
         document.instrumental ||
         document.text.trim().isEmpty) {
@@ -794,7 +954,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
           key: const Key('lyrics-plain'),
           style: TextStyle(
             height: 1.55,
-            fontSize: widget.immersive ? 30 : 14,
+            fontSize: widget.controller.fontSize,
             fontWeight: widget.immersive ? FontWeight.w700 : FontWeight.w400,
             color: widget.immersive ? CupertinoColors.white : null,
           ),
@@ -846,7 +1006,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
                               ? const Color(0xFFFFB86B)
                               : const Color(0xFF9FAABD)),
                     height: widget.immersive ? 1.3 : 1.6,
-                    fontSize: widget.immersive ? 32 : 16,
+                    fontSize: widget.controller.fontSize,
                     fontWeight: widget.immersive || selected
                         ? FontWeight.w700
                         : FontWeight.w400,

@@ -222,7 +222,7 @@ void main() {
     await tester.pumpAndSettle();
     expectNoMaterialWidgets();
     final active = tester.widget<CupertinoButton>(_key('lyrics-line-2'));
-    expect((active.child as Text).style!.fontSize, 32);
+    expect((active.child as Text).style!.fontSize, 22);
     expect((active.child as Text).style!.color, CupertinoColors.white);
     expect(active.color, CupertinoColors.transparent);
     await tester.drag(_key('lyrics-synced-scroll'), const Offset(0, -100));

@@ -34,6 +34,41 @@ class LyricsController extends ChangeNotifier {
   LyricsDocument? _document;
   bool _preferSimplified = true;
   bool get preferSimplified => _preferSimplified;
+  static const double defaultFontSize = 22;
+  static const double minFontSize = 14;
+  static const double maxFontSize = 36;
+  double _fontSize = defaultFontSize;
+  double get fontSize => _fontSize;
+  String? _fontSizeError;
+  String? get fontSizeError => _fontSizeError;
+
+  /// Display-only preference. Never rewrites lyric text or timing information.
+  Future<void> setFontSize(double value) async {
+    if (!value.isFinite) return;
+    await initialize();
+    if (_disposed) return;
+    final size = value.clamp(minFontSize, maxFontSize).roundToDouble();
+    if (size == _fontSize && _fontSizeError == null) return;
+    _fontSize = size;
+    notifyListeners();
+    final write = _pendingWrite.then(
+      (_) => _platform.writeCache(_serializeCache()),
+    );
+    _pendingWrite = write.catchError((Object _) {});
+    try {
+      await write;
+      if (!_disposed && _fontSizeError != null) {
+        _fontSizeError = null;
+        notifyListeners();
+      }
+    } catch (_) {
+      if (!_disposed) {
+        _fontSizeError = '字号仅在本次使用中有效，无法保存到本机。';
+        notifyListeners();
+      }
+    }
+  }
+
   LyricsDocument? _simplifiedSource, _simplifiedDocument;
   LyricsDocument? get originalDocument => _document;
   LyricsDocument? get document {
@@ -94,6 +129,10 @@ class LyricsController extends ChangeNotifier {
       if (value['version'] != 1) throw const FormatException('未知缓存版本');
       _automaticEnabled = value['automaticSearch'] == true;
       _preferSimplified = value['preferSimplified'] != false;
+      final savedSize = value['fontSize'];
+      if (savedSize is num && savedSize.isFinite) {
+        _fontSize = savedSize.clamp(minFontSize, maxFontSize).roundToDouble();
+      }
       final entries = value['entries'] as Map<String, dynamic>;
       for (final entry in entries.entries.take(100)) {
         try {
@@ -593,6 +632,7 @@ class LyricsController extends ChangeNotifier {
     'version': 1,
     'automaticSearch': _automaticEnabled,
     'preferSimplified': _preferSimplified,
+    'fontSize': _fontSize,
     'entries': _cache.map((key, value) => MapEntry(key, value.toJson())),
     'automaticMatches': _automaticMatches.map(
       (key, value) => MapEntry(key, {

@@ -226,9 +226,18 @@ void main() {
     await tester.tap(find.byTooltip('查看歌词'));
     await tester.pumpAndSettle();
     await capture('phone-lyrics');
+    await tester.tap(find.byKey(const Key('lyrics-font-size')));
+    await tester.pumpAndSettle();
+    await capture('phone-lyrics-font-size');
+    await c.lyrics.setFontSize(16);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await capture('phone-lyrics-font-small');
+    await c.lyrics.setFontSize(22);
     await tester.tap(find.byKey(const Key('lyrics-options')));
     await tester.pumpAndSettle();
     await capture('phone-lyrics-options');
+    await tester.ensureVisible(find.byKey(const Key('lyrics-auto-switch')));
     await tester.tap(find.byKey(const Key('lyrics-auto-switch')));
     await tester.pumpAndSettle();
     await capture('phone-auto-consent');
