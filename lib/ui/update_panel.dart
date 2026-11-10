@@ -127,7 +127,7 @@ class UpdatePanel extends StatelessWidget {
                 platform == 'web'
                     ? '自动检查网站的新版本，下载完成后由你决定何时重载。重载会停止当前播放。浏览器可能要求重新选择音乐目录。'
                     : platform == 'macos'
-                    ? '自动检查新版本；下载后打开 DMG 安装。当前预览版尚未配置安全自动替换与重启，macOS 可能提示开发者验证。不会绕过系统安全检查。'
+                    ? '自动检查新版本；点击下方按钮，用浏览器从官方发布页面下载 DMG，再安装到“应用程序”。当前预览版未经过 Apple 公证，首次打开可能需要在“隐私与安全性”中确认。'
                     : platform == 'android'
                     ? '自动检查新版本；下载后交给系统安装器确认。仅接受与当前应用签名一致、版本更高的 APK。'
                     : '按原安装渠道更新。',
@@ -206,7 +206,11 @@ class UpdatePanel extends StatelessWidget {
                       onPressed: c.download,
                       icon: const Icon(CupertinoIcons.arrow_down),
                       label: Text(
-                        c.phase == UpdatePhase.failed ? '重新下载' : '下载新版',
+                        platform == 'macos'
+                            ? '前往官网下载'
+                            : c.phase == UpdatePhase.failed
+                            ? '重新下载'
+                            : '下载新版',
                       ),
                     ),
                   if (ready)

@@ -9,6 +9,17 @@ struct AppUpdateFailure: Error {
 
 /// File checks are kept separate so tests never mount a disk image or install an app.
 enum AppUpdateFilePolicy {
+  static func validatedReleasePage(_ text: String) throws -> URL {
+    guard let url = URL(string: text), url.scheme == "https", url.host == "github.com",
+          url.port == nil || url.port == 443,
+          url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+          url.path.range(of: #"^/KingXcode/cloud-music/releases/tag/v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$"#,
+                         options: .regularExpression) != nil else {
+      throw AppUpdateFailure(code: "invalid_url", message: "Only official release pages can be opened.")
+    }
+    return url
+  }
+
   static func validatedDMG(path: String, directory: URL) throws -> URL {
     guard (path as NSString).isAbsolutePath else {
       throw invalidPackage()
@@ -102,6 +113,13 @@ final class AppUpdateBridge {
         result(info)
       case "getDownloadDirectory":
         result(try downloadDirectory().path)
+      case "openReleasePage":
+        let arguments = call.arguments as? [String: Any]
+        let page = try AppUpdateFilePolicy.validatedReleasePage(arguments?["url"] as? String ?? "")
+        guard NSWorkspace.shared.open(page) else {
+          throw AppUpdateFailure(code: "open_failed", message: "The browser could not open the release page.")
+        }
+        result(nil)
       case "installDownloaded":
         guard let arguments = call.arguments as? [String: Any],
               let path = arguments["path"] as? String, !path.isEmpty else {

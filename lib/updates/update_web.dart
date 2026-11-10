@@ -16,6 +16,11 @@ extension type _BrowserUpdates(JSObject _) implements JSObject {
 UpdateBackend createPlatformUpdateBackend() => WebUpdateBackend();
 
 class WebUpdateBackend implements UpdateBackend {
+  @override
+  Future<void> openReleasePage(UpdateRelease release) async {
+    throw const UpdateException('网页版请使用网页更新。');
+  }
+
   String? _releaseId;
   UpdateRelease? _release;
   int _generation = 0;

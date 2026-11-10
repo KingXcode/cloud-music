@@ -2,6 +2,7 @@
 abstract class UpdateBackend {
   Future<InstalledVersion> getInstalledVersion();
   Future<UpdateRelease?> check(InstalledVersion current);
+  Future<void> openReleasePage(UpdateRelease release);
   Future<void> download(
     UpdateRelease release,
     void Function(int received, int? total) onProgress,

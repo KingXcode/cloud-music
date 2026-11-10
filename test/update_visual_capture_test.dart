@@ -86,7 +86,9 @@ void main() {
       );
       await updates.check();
       final transfer = updates.download();
-      backend.progressCallbacks.single(12 * 1024 * 1024, 32 * 1024 * 1024);
+      if (configuration.platform != 'macos') {
+        backend.progressCallbacks.single(12 * 1024 * 1024, 32 * 1024 * 1024);
+      }
       final boundary = GlobalKey();
       await tester.pumpWidget(
         RepaintBoundary(
@@ -144,21 +146,26 @@ void main() {
       await tester.tap(find.byKey(const Key('update-banner')));
       await tester.pumpAndSettle();
       await capture('download-top');
-      await tester.ensureVisible(find.byKey(const Key('update-progress')));
-      await tester.pumpAndSettle();
-      await capture('download-progress');
-      backend.downloads.single.complete();
-      await transfer;
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.byKey(const Key('install-update')));
-      await tester.pumpAndSettle();
-      await capture('ready');
-      await tester.tap(find.byKey(const Key('install-update')));
-      await tester.pumpAndSettle();
-      await capture('confirmation');
-      await tester.tap(find.text('稍后'));
-      await tester.pumpAndSettle();
-      expect(backend.installCalls, 0);
+      if (configuration.platform == 'macos') {
+        await transfer;
+        await capture('browser-download');
+      } else {
+        await tester.ensureVisible(find.byKey(const Key('update-progress')));
+        await tester.pumpAndSettle();
+        await capture('download-progress');
+        backend.downloads.single.complete();
+        await transfer;
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.byKey(const Key('install-update')));
+        await tester.pumpAndSettle();
+        await capture('ready');
+        await tester.tap(find.byKey(const Key('install-update')));
+        await tester.pumpAndSettle();
+        await capture('confirmation');
+        await tester.tap(find.text('稍后'));
+        await tester.pumpAndSettle();
+        expect(backend.installCalls, 0);
+      }
       await tester.pumpWidget(const SizedBox());
       music.dispose();
       updates.dispose();

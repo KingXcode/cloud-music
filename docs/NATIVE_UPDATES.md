@@ -5,13 +5,17 @@
 ## 当前交付范围
 
 - Android：验证 APK 属于本应用、版本代码严格递增、当前签名证书集合完全一致，然后打开 Android 系统安装器。首次安装来源授权只在用户点击安装时请求。最终安装由 Android 再做完整校验和用户确认。
-- macOS：打开已下载且由 Dart 校验的 DMG，保留现有隔离属性，必要时通过系统 API 添加下载隔离属性，保持 Gatekeeper 正常检查。安装替换仍需用户完成。
+- macOS：0.7.6 起改为默认浏览器打开官方对应版本发布页，由浏览器下载 DMG，再由用户安装。应用内更新不再走私有缓存下载/打开 DMG 的路径；沙盒下载可能带禁止执行标记，单独添加下载隔离属性不能解决。后文 `installDownloaded` 的 macOS 描述为旧桥接兼容逻辑，不是当前界面流程。
 - 两个平台的 `automaticInstall` 都为 `false`。**当前没有接入 Sparkle，不具备自动替换应用或自动重启能力。**
 - 未生成或配置生产签名密钥、EdDSA 密钥、Developer ID 证书、公证凭据，也未安装新版本或更改任何系统安全设置。
 
 ## 通道约定
 
 通道名：`dev.cloudmusic/app_updates`。
+
+### `openReleasePage`（macOS，0.7.6 起）
+
+参数 `{url: String}`。Dart 和 Swift 均只接受 `https://github.com/KingXcode/cloud-music/releases/tag/v版本号`（允许预览后缀），禁止其他仓库、用户信息、查询参数和片段。通过 NSWorkspace 打开默认浏览器，不下载文件、不挂载 DMG、不安装应用。
 
 ### `getInfo`
 

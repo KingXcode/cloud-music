@@ -41,6 +41,29 @@ class NativeUpdateBackend implements UpdateBackend {
   Future<UpdateRelease?> check(InstalledVersion current) =>
       ReleaseApi(_fetch).check(current);
 
+  @override
+  Future<void> openReleasePage(UpdateRelease release) async {
+    final uri = release.releasePage;
+    if (uri.scheme != 'https' ||
+        uri.host != 'github.com' ||
+        uri.port != 443 ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        !RegExp(
+          r'^/KingXcode/cloud-music/releases/tag/v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$',
+        ).hasMatch(uri.path)) {
+      throw const UpdateException('更新页面地址不受信任。');
+    }
+    try {
+      await _channel.invokeMethod<void>('openReleasePage', {
+        'url': uri.toString(),
+      });
+    } on PlatformException {
+      throw const UpdateException('无法打开浏览器，请手动访问 GitHub 发布页面下载。');
+    }
+  }
+
   bool _allowed(Uri uri) {
     if (uri.scheme != 'https' ||
         uri.port != 443 ||

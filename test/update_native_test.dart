@@ -119,6 +119,7 @@ void main() {
           calls.add(call);
           if (call.method == 'getDownloadDirectory') return directory.path;
           if (call.method == 'installDownloaded') return 'opened';
+          if (call.method == 'openReleasePage') return null;
           throw PlatformException(code: 'unexpected_method');
         });
   });
@@ -127,6 +128,31 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
     await directory.delete(recursive: true);
+  });
+
+  test('opens only official HTTPS release pages without downloading files', () async {
+    await backend.openReleasePage(_release(payload));
+    expect(calls.single.method, 'openReleasePage');
+    expect(directory.listSync(), isEmpty);
+    calls.clear();
+    for (final url in [
+      'file:///tmp/update.dmg',
+      'https://github.com.evil.test/KingXcode/cloud-music/releases/tag/v0.7.6',
+      'https://github.com/Other/project/releases/tag/v0.7.6',
+      'https://github.com/KingXcode/cloud-music/releases/tag/v0.7.6?redirect=other',
+    ]) {
+      await expectLater(
+        backend.openReleasePage(
+          UpdateRelease(
+            version: '0.7.6',
+            build: '18',
+            releasePage: Uri.parse(url),
+          ),
+        ),
+        throwsA(isA<UpdateException>()),
+      );
+    }
+    expect(calls, isEmpty);
   });
 
   test(

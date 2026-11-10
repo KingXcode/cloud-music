@@ -29,6 +29,7 @@ class ControlledUpdateBackend implements UpdateBackend {
   int getInfoCalls = 0;
   int checkCalls = 0;
   int downloadCalls = 0;
+  int openPageCalls = 0;
   int installCalls = 0;
   int cancelCalls = 0;
   int disposeCalls = 0;
@@ -54,6 +55,11 @@ class ControlledUpdateBackend implements UpdateBackend {
   Future<UpdateRelease?> check(InstalledVersion current) async {
     checkCalls++;
     return checkResult == null ? next : checkResult!.future;
+  }
+
+  @override
+  Future<void> openReleasePage(UpdateRelease release) async {
+    openPageCalls++;
   }
 
   @override

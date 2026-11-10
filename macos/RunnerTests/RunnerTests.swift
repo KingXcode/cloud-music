@@ -24,6 +24,20 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(try AppUpdateFilePolicy.validatedDMG(path: file.path, directory: cache), file)
   }
 
+  func testOfficialReleasePagePolicy() throws {
+    let page = "https://github.com/KingXcode/cloud-music/releases/tag/v0.7.6-preview.1"
+    XCTAssertEqual(try AppUpdateFilePolicy.validatedReleasePage(page).absoluteString, page)
+    for invalid in [
+      "http://github.com/KingXcode/cloud-music/releases/tag/v0.7.6",
+      "https://github.com.evil.test/KingXcode/cloud-music/releases/tag/v0.7.6",
+      "https://github.com/Other/project/releases/tag/v0.7.6",
+      page + "?redirect=elsewhere", page + "#fragment",
+      "file:///tmp/update.dmg", "https://user@github.com/KingXcode/cloud-music/releases/tag/v0.7.6"
+    ] {
+      XCTAssertThrowsError(try AppUpdateFilePolicy.validatedReleasePage(invalid))
+    }
+  }
+
   func testRejectsFilesOutsideExactCacheAndSiblingPrefix() throws {
     let outside = root.appendingPathComponent("outside.dmg")
     try Data("outside".utf8).write(to: outside)

@@ -84,6 +84,16 @@ class UpdateController extends ChangeNotifier {
     total = release!.asset?.size;
     _notify();
     try {
+      if (installed?.platform == 'macos') {
+        await backend.openReleasePage(release!);
+        if (!_live(op)) return;
+        phase = UpdatePhase.available;
+        received = 0;
+        total = null;
+        message = '已打开官方发布页面。请用浏览器下载 DMG，安装到“应用程序”后重新打开。';
+        _notify();
+        return;
+      }
       await backend.download(release!, (bytes, size) {
         if (!_live(op)) return;
         received = bytes;

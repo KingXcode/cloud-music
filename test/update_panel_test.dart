@@ -141,7 +141,27 @@ void main() {
     },
   );
 
-  for (final platform in ['android', 'macos', 'web']) {
+  testWidgets(
+    'macOS opens official downloads without caching or installing a DMG',
+    (tester) async {
+      final backend = ControlledUpdateBackend(platform: 'macos');
+      final controller = UpdateController(backend);
+      await controller.check();
+      await _mount(tester, controller);
+      await tester.ensureVisible(find.text('前往官网下载'));
+      await tester.tap(find.text('前往官网下载'));
+      await tester.pumpAndSettle();
+      expect(backend.openPageCalls, 1);
+      expect(backend.downloadCalls, 0);
+      expect(backend.installCalls, 0);
+      expect(controller.phase, UpdatePhase.available);
+      expect(find.byKey(const Key('install-update')), findsNothing);
+      expect(find.textContaining('已打开官方发布页面'), findsOneWidget);
+      await _unmount(tester, controller);
+    },
+  );
+
+  for (final platform in ['android', 'web']) {
     testWidgets(
       '$platform requires confirmation; Later preserves ready state',
       (tester) async {
