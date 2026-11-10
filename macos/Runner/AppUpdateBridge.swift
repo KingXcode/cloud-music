@@ -48,7 +48,7 @@ enum AppUpdateFilePolicy {
       return
     }
     let properties: [String: Any] = [
-      kLSQuarantineAgentNameKey as String: "Cloud Music",
+      kLSQuarantineAgentNameKey as String: "Xianbo",
       kLSQuarantineAgentBundleIdentifierKey as String:
         Bundle.main.bundleIdentifier ?? "dev.cloudmusic.cloudMusic",
       kLSQuarantineTypeKey as String: kLSQuarantineTypeWebDownload as String,

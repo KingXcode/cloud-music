@@ -85,7 +85,7 @@ internal class AudioEngine private constructor(val context: Context) {
         "volume" to volume.toDouble(), "artwork" to artwork, "message" to message)
     fun emit() { sink?.success(snapshot()); PlaybackService.refresh() }
     fun notice(text: String) { message = text; emit() }
-    fun title() = tracks.find { it.id == current }?.title ?: "云听"
+    fun title() = tracks.find { it.id == current }?.title ?: "弦泊"
     fun artist() = tracks.find { it.id == current }?.artist ?: ""
     fun isPlaying() = try { prepared && player?.isPlaying == true } catch (_: Exception) { false }
     fun position(): Long = try { if (prepared) player?.currentPosition?.toLong() ?: 0 else 0 } catch (_: Exception) { 0 }

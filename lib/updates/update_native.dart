@@ -229,7 +229,7 @@ class NativeUpdateBackend implements UpdateBackend {
         'signature_mismatch' =>
           '新版 APK 与当前应用的签名不同，不能覆盖安装。请联系发行者提供同一签名的更新；不要为更新自动卸载或清空数据。',
         'version_not_newer' => '安装包的系统版本号不高于当前版本，请重新检查更新。',
-        'package_mismatch' => '安装包不属于云听，已拒绝安装。',
+        'package_mismatch' => '安装包不属于弦泊，已拒绝安装。',
         'invalid_package' => '安装包无效或缓存已被清理，请重新下载。',
         'quarantine_failed' => 'macOS 无法为下载包启用安全检查，已停止打开。',
         'install_unavailable' => '系统安装器或安装权限不可用，请检查设备设置。',

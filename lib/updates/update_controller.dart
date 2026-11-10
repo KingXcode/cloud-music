@@ -136,7 +136,7 @@ class UpdateController extends ChangeNotifier {
       message = result == 'permissionRequired'
           ? '请在系统设置中允许此应用安装更新。返回后再次点“安装新版”。'
           : installed?.platform == 'macos'
-          ? '已打开 DMG。请在系统窗口中将新版拖入“应用程序”替换，完成后重新打开云听。'
+          ? '已打开 DMG。请在系统窗口中将新版拖入“应用程序”替换，完成后重新打开弦泊。'
           : '已打开系统安装界面，请在系统界面确认。取消后可再次安装。';
     } catch (error) {
       if (!_live(op)) return;

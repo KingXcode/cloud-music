@@ -5,7 +5,9 @@
 // 下方配置值默认使用项目名称。
 
 // 应用名称，默认也用作 Flutter 窗口标题。
-PRODUCT_NAME = CloudMusic
+PRODUCT_NAME = Xianbo
+// 产品名称调整时保持 Swift 模块名，兼容既有测试和宿主引用。
+PRODUCT_MODULE_NAME = CloudMusic
 
 // 应用的包标识符
 PRODUCT_BUNDLE_IDENTIFIER = dev.cloudmusic.cloudMusic

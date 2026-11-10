@@ -125,7 +125,7 @@ internal class AppUpdateBridge(
         val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.app_updates", apk)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
-            clipData = ClipData.newRawUri("Cloud Music update", uri)
+            clipData = ClipData.newRawUri("Xianbo update", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         // Android performs the final cryptographic APK/signature/compatibility checks

@@ -3,7 +3,7 @@
     <!-- Requested only when the user explicitly chooses to install a downloaded update. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application
-        android:label="云听"
+        android:label="弦泊"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

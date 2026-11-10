@@ -1,10 +1,12 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 import '../lyrics/lyrics_controller.dart';
 import '../lyrics/lyrics_models.dart';
 import '../lyrics/lyrics_matching.dart';
 import '../lyrics/lyrics_script.dart';
+import 'player_scroll_area.dart';
 
 part 'lyrics_search_widgets.dart';
 
@@ -812,37 +814,47 @@ class _LyricsPanelState extends State<LyricsPanel> {
           ],
         ),
         Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    CupertinoColors.transparent,
-                    CupertinoColors.white,
-                    CupertinoColors.white,
-                    CupertinoColors.transparent,
-                  ],
-                  stops: [0, .06, .92, 1],
-                ).createShader(bounds),
-                blendMode: BlendMode.dstIn,
-                child: NotificationListener<ScrollStartNotification>(
-                  onNotification: (notification) {
-                    if (notification.dragDetails != null && _follow) {
-                      setState(() => _follow = false);
-                    }
-                    return false;
-                  },
-                  child: _lyricsBody(
-                    document,
-                    active,
-                    hasTrack,
-                    viewportHeight: constraints.maxHeight,
+          child: PlayerScrollArea(
+            key: const Key('lyrics-scroll-area'),
+            controller: _scroll,
+            hideAutomaticScrolling: true,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      CupertinoColors.transparent,
+                      CupertinoColors.white,
+                      CupertinoColors.white,
+                      CupertinoColors.transparent,
+                    ],
+                    stops: [0, .06, .92, 1],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      final manualScroll =
+                          (notification is ScrollStartNotification &&
+                              notification.dragDetails != null) ||
+                          (notification is UserScrollNotification &&
+                              notification.direction != ScrollDirection.idle);
+                      if (notification.depth == 0 && manualScroll && _follow) {
+                        setState(() => _follow = false);
+                      }
+                      return false;
+                    },
+                    child: _lyricsBody(
+                      document,
+                      active,
+                      hasTrack,
+                      viewportHeight: constraints.maxHeight,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
         if (empty && hasTrack && document?.instrumental != true)
@@ -920,6 +932,7 @@ class _LyricsPanelState extends State<LyricsPanel> {
         document.instrumental ||
         document.text.trim().isEmpty) {
       return SingleChildScrollView(
+        controller: _scroll,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 32),
           child: Text(

@@ -11,6 +11,7 @@ import '../models.dart';
 import '../music_controller.dart';
 import 'lyrics_panel.dart';
 import 'macos_window_chrome.dart';
+import 'player_scroll_area.dart';
 import 'music_sources_sheet.dart';
 import '../updates/update_controller.dart';
 import 'update_panel.dart';
@@ -32,7 +33,7 @@ class MusicApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CupertinoApp(
-    title: '云听 · Cloud Music',
+    title: '弦泊 · Xianbo',
     locale: const Locale('zh', 'CN'),
     supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
     localizationsDelegates: const [
@@ -693,13 +694,21 @@ class _LibraryPageState extends State<_LibraryPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   children: [
-                    Icon(CupertinoIcons.music_note_2, color: _accent, size: 30),
-                    SizedBox(width: 10),
-                    Flexible(
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        'assets/branding/xianbo-icon.png',
+                        width: 32,
+                        height: 32,
+                        excludeFromSemantics: true,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Flexible(
                       child: Text(
-                        '云听',
+                        '弦泊',
                         style: TextStyle(
                           fontSize: 25,
                           fontWeight: FontWeight.w800,
@@ -1248,8 +1257,16 @@ class _PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<_PlayerPage> {
+  final _detailsScroll = ScrollController();
   _PlayerView _view = _PlayerView.artwork;
   bool _viewInitialized = false;
+
+  @override
+  void dispose() {
+    _detailsScroll.dispose();
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -1260,6 +1277,71 @@ class _PlayerPageState extends State<_PlayerPage> {
       _viewInitialized = true;
     }
   }
+
+  Widget _details(
+    LibrarySnapshot snapshot,
+    Widget controls, {
+    required bool compact,
+    required bool largeText,
+  }) => LayoutBuilder(
+    key: const Key('player-details-layout'),
+    builder: (context, area) {
+      Widget artwork(double size) => _Artwork(
+        size: size,
+        bytes: snapshot.artwork,
+        seed: snapshot.currentTrack?.album ?? '',
+        shadow: true,
+      );
+      final gap = compact ? 12.0 : 24.0;
+      // 封面使用剩余高度，避免少量溢出产生贯穿播放区的滚动条。
+      if (!largeText && area.maxHeight >= (compact ? 330 : 480)) {
+        return Padding(
+          padding: const EdgeInsets.only(right: 24),
+          child: Column(
+            children: [
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, cover) => Center(
+                    child: artwork(
+                      math.max(
+                        0,
+                        math.min(
+                          370,
+                          math.min(cover.maxWidth - 32, cover.maxHeight),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: gap),
+              controls,
+            ],
+          ),
+        );
+      }
+      final artSize = math.min(
+        area.maxWidth - 56,
+        math.max(80.0, area.maxHeight - (compact ? 226 : 330)),
+      );
+      return PlayerScrollArea(
+        key: const Key('player-details-scroll-area'),
+        controller: _detailsScroll,
+        child: SingleChildScrollView(
+          key: const Key('player-details-scroll'),
+          controller: _detailsScroll,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              artwork(artSize.clamp(80.0, 370.0)),
+              SizedBox(height: gap),
+              controls,
+            ],
+          ),
+        ),
+      );
+    },
+  );
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -1418,42 +1500,11 @@ class _PlayerPageState extends State<_PlayerPage> {
                                         children: [
                                           Expanded(
                                             flex: 5,
-                                            child: LayoutBuilder(
-                                              builder: (context, left) {
-                                                final artSize = math.min(
-                                                  left.maxWidth - 32,
-                                                  math.max(
-                                                    80.0,
-                                                    left.maxHeight -
-                                                        (short ? 226 : 330),
-                                                  ),
-                                                );
-                                                return SingleChildScrollView(
-                                                  child: Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      _Artwork(
-                                                        size: artSize.clamp(
-                                                          80.0,
-                                                          370.0,
-                                                        ),
-                                                        bytes: s.artwork,
-                                                        seed:
-                                                            s
-                                                                .currentTrack
-                                                                ?.album ??
-                                                            '',
-                                                        shadow: true,
-                                                      ),
-                                                      SizedBox(
-                                                        height: short ? 12 : 24,
-                                                      ),
-                                                      controls,
-                                                    ],
-                                                  ),
-                                                );
-                                              },
+                                            child: _details(
+                                              s,
+                                              controls,
+                                              compact: short,
+                                              largeText: largeText,
                                             ),
                                           ),
                                           SizedBox(width: short ? 24 : 70),
@@ -1991,7 +2042,7 @@ class _Artwork extends StatelessWidget {
           left: 0,
           right: 0,
           child: Text(
-            '云 听  ·  原 声',
+            '弦 泊  ·  原 声',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: size * .032,

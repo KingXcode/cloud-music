@@ -54,9 +54,9 @@ void main() {
   ) async {
     await _mount(tester);
     final sidebar = find
-        .ancestor(of: find.text('云听'), matching: find.byType(Container))
+        .ancestor(of: find.text('弦泊'), matching: find.byType(Container))
         .first;
-    final title = find.text('云听');
+    final title = find.text('弦泊');
     final options = find.byKey(const Key('library-options'));
     expect(tester.getTopLeft(sidebar), Offset.zero);
     expect(tester.getTopLeft(title).dy, greaterThanOrEqualTo(32));

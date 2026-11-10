@@ -180,7 +180,7 @@ class _MusicSourcesSheetState extends State<MusicSourcesSheet> {
       ),
     ),
     const SizedBox(height: 10),
-    const Text('本次连接和网盘曲库不由云听写入本地存储。网页刷新后需重新连接；原生登录状态由 Google 官方 SDK 管理。'),
+    const Text('本次连接和网盘曲库不由弦泊写入本地存储。网页刷新后需重新连接；原生登录状态由 Google 官方 SDK 管理。'),
     if (!d.configured) ...[
       const SizedBox(height: 12),
       Container(

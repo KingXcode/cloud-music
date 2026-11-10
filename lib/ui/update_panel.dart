@@ -54,7 +54,7 @@ class UpdateBanner extends StatelessWidget {
                         downloading
                             ? '正在下载新版 · ${_progressLabel(c)}'
                             : c.phase == UpdatePhase.available
-                            ? '发现云听 ${c.release!.version} · 查看更新'
+                            ? '发现弦泊 ${c.release!.version} · 查看更新'
                             : '新版已下载 · 点击安装',
                         style: const TextStyle(fontSize: 13),
                       ),

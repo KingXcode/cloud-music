@@ -264,7 +264,7 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
     try {
       await _platform.disconnect();
     } catch (_) {
-      _error = '已清除本次会话。撤销 Google 授权未完成，可在 Google 账户的第三方连接中移除云听。';
+      _error = '已清除本次会话。撤销 Google 授权未完成，可在 Google 账户的第三方连接中移除弦泊。';
     }
     _notify();
   }
