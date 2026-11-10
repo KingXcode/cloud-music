@@ -1,6 +1,7 @@
 import 'dart:convert';
 
-import 'lyrics_script.dart';
+import '../time_values.dart';
+import 'lyrics_text_conversion.dart';
 
 const maxLyricsBytes = 256 * 1024;
 
@@ -74,7 +75,7 @@ class LyricsDocument {
             fractions(match) -
             offsetMs;
         final bucket = grouped.putIfAbsent(
-          milliseconds.clamp(0, 1 << 53),
+          nonNegativeMilliseconds(milliseconds),
           () => [],
         );
         if (!bucket.contains(content)) bucket.add(content);
@@ -161,7 +162,7 @@ class LyricsCandidate {
   factory LyricsCandidate.fromJson(Map<String, dynamic> value) {
     final seconds = value['duration'];
     final milliseconds = seconds is num && seconds.isFinite && seconds >= 0
-        ? (seconds * 1000).round().clamp(0, 1 << 53)
+        ? nonNegativeMilliseconds((seconds * 1000).round())
         : 0;
     return LyricsCandidate(
       id: value['id'] as int,

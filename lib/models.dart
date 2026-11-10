@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'time_values.dart';
 import 'track_identity.dart';
 
 enum TrackAvailability {
@@ -134,5 +135,4 @@ class LibrarySnapshot {
   );
 }
 
-int _positiveInt(Object? value) =>
-    value is num && value.isFinite ? value.toInt().clamp(0, 1 << 53) : 0;
+int _positiveInt(Object? value) => nonNegativeMilliseconds(value);

@@ -451,9 +451,7 @@ void main() {
     controller.selectTrack(_track.copyWith(title: 'A new song'));
     await tester.pumpAndSettle();
     expectNoMaterialWidgets();
-    final button = tester.widget<CupertinoDialogAction>(
-      _key('lyrics-preview-save'),
-    );
+    final button = tester.widget<CupertinoButton>(_key('lyrics-preview-save'));
     expect(button.onPressed, isNull);
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -505,6 +503,111 @@ void main() {
     expect(_key('lyrics-candidate-704'), findsOneWidget);
     expect(platform.writes, isEmpty);
   });
+
+  testWidgets(
+    'empty title and keyboard Done cannot send an unconfirmed query',
+    (tester) async {
+      final platform = _Platform();
+      await _mount(tester, platform, immersive: true);
+      await _tap(tester, 'lyrics-options');
+      await _tap(tester, 'lyrics-search');
+      await tester.enterText(_key('lyrics-query-title'), '   ');
+      await tester.pump();
+      expect(
+        tester
+            .widget<CupertinoButton>(_key('lyrics-consent-confirm'))
+            .onPressed,
+        isNull,
+      );
+      await tester.enterText(_key('lyrics-query-album'), 'Test album');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+      expect(platform.requests, isEmpty);
+      expect(_key('lyrics-consent-dialog'), findsOneWidget);
+      await _tap(tester, 'lyrics-consent-cancel');
+      expect(_key('lyrics-options-sheet'), findsOneWidget);
+    },
+  );
+
+  for (final size in [const Size(320, 568), const Size(844, 390)]) {
+    testWidgets('search controls stay reachable with keyboard at $size', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(size);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final platform = _Platform();
+      await _mount(tester, platform, immersive: true);
+      await _tap(tester, 'lyrics-options');
+      await _tap(tester, 'lyrics-search');
+      tester.view.viewInsets = FakeViewPadding(
+        bottom: size.height > 500 ? 260 : 170,
+      );
+      addTearDown(tester.view.resetViewInsets);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(_key('lyrics-query-album'));
+      await tester.enterText(_key('lyrics-query-album'), 'Changed locally');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(_key('lyrics-consent-confirm').hitTestable(), findsOneWidget);
+      expect(_key('lyrics-consent-cancel').hitTestable(), findsOneWidget);
+      expect(platform.requests, isEmpty);
+      await _tap(tester, 'lyrics-consent-cancel');
+      expect(_key('lyrics-consent-dialog'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets(
+    'prefilled search fields expose their purpose to screen readers',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await _mount(tester, _Platform());
+        await _tap(tester, 'lyrics-search');
+        for (final entry in {
+          'lyrics-query-title': '歌名 · 必填',
+          'lyrics-query-artist': '歌手 · 推荐填写',
+          'lyrics-query-album': '专辑 · 可选',
+        }.entries) {
+          await tester.ensureVisible(_key(entry.key));
+          await tester.pump();
+          expect(
+            tester.getSemantics(_key(entry.key)).label,
+            contains(entry.value),
+          );
+        }
+      } finally {
+        semantics.dispose();
+      }
+    },
+  );
+
+  testWidgets(
+    'missing provider duration is neutral and never appears as zero minutes',
+    (tester) async {
+      final platform = _Platform()
+        ..response = LyricsHttpResponse(
+          200,
+          jsonEncode([
+            {
+              'id': 705,
+              'trackName': _track.title,
+              'artistName': _track.artist,
+              'plainLyrics': 'An original paper harbor',
+            },
+          ]),
+        );
+      await _mount(tester, platform);
+      await _consentedSearch(tester);
+      expect(find.text('来源未提供时长'), findsOneWidget);
+      expect(find.textContaining('时长未知，请核对'), findsNothing);
+      await _tap(tester, 'lyrics-candidate-705');
+      expect(find.text('纯文本没有时间轴，播放时不会自动滚动。'), findsOneWidget);
+      expect(find.text('0:00'), findsNothing);
+    },
+  );
 
   testWidgets('artist may be empty and successful edited query is retained', (
     tester,

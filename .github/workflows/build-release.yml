@@ -26,6 +26,8 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash scripts/ci_flutter.sh
       - run: flutter pub get
+      - name: Verify playback and lyric clocks on VM and JavaScript
+        run: bash scripts/check_web_timing.sh
       - name: Verify update manifest generator
         run: python3 -m unittest discover -s test/scripts -v
       - run: flutter analyze

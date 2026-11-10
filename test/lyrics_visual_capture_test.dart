@@ -93,13 +93,17 @@ void main() {
         duration: Duration(seconds: 189),
       ),
     );
-    Future<void> mount(Size size, double scale) async {
+    Future<void> mount(Size size, double scale, {bool dark = false}) async {
       await tester.binding.setSurfaceSize(size);
       await tester.pumpWidget(
         RepaintBoundary(
           key: boundary,
           child: CupertinoApp(
-            theme: const CupertinoThemeData(primaryColor: Color(0xFFD63C60)),
+            debugShowCheckedModeBanner: false,
+            theme: CupertinoThemeData(
+              primaryColor: const Color(0xFFD63C60),
+              brightness: dark ? Brightness.dark : Brightness.light,
+            ),
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(context)
                   .copyWith(textScaler: TextScaler.linear(scale)),
@@ -152,12 +156,25 @@ void main() {
 
     await mount(const Size(390, 844), 1);
     await tap('lyrics-options');
+    await capture('lyrics-management-mobile');
     await tap('lyrics-search');
     await capture('lyrics-search-mobile');
     await tap('lyrics-consent-confirm');
     await capture('lyrics-results-mobile');
     await tap('lyrics-candidate-9101');
     await capture('lyrics-preview-mobile');
+    await tap('lyrics-preview-cancel');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await mount(const Size(390, 844), 1, dark: true);
+    await tap('lyrics-options');
+    await tap('lyrics-search');
+    await capture('lyrics-search-dark');
+    await tap('lyrics-consent-cancel');
+    await tester.ensureVisible(find.byKey(const Key('lyrics-candidate-9101')));
+    await capture('lyrics-results-dark');
+    await tap('lyrics-candidate-9101');
+    await capture('lyrics-preview-dark');
     await tap('lyrics-preview-cancel');
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();

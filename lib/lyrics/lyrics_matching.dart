@@ -1,6 +1,6 @@
 import '../models.dart';
 import 'lyrics_models.dart';
-import 'lyrics_script.dart';
+import 'lyrics_text_conversion.dart';
 
 // 仅忽略字形、空白和标点差异，不删除现场、翻唱、混音等版本信息。
 String normalizeLyricsIdentity(String value) {
@@ -46,6 +46,17 @@ List<LyricsCandidate> rankLyricsCandidates(
       final identity = normalizeLyricsIdentity(pair.$1)
           .compareTo(normalizeLyricsIdentity(pair.$2));
       if (identity != 0) return identity;
+    }
+    // Missing duration is unknown, not a zero-length recording. Never put it
+    // ahead of equally matched versions with usable source metadata.
+    if ((a.duration > Duration.zero) != (b.duration > Duration.zero)) {
+      return a.duration > Duration.zero ? -1 : 1;
+    }
+    if (track.duration > Duration.zero) {
+      final distance = (a.duration - track.duration).inMilliseconds
+          .abs()
+          .compareTo((b.duration - track.duration).inMilliseconds.abs());
+      if (distance != 0) return distance;
     }
     final duration = a.duration.compareTo(b.duration);
     if (duration != 0) return duration;
