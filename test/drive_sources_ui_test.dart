@@ -1,3 +1,7 @@
+import 'package:cloud_music/playback_stats/playback_stats.dart';
+
+import 'playback_stats_test.dart' show MemoryPlaybackStatsStore;
+
 import 'package:cloud_music/library_filter/library_filter.dart';
 
 import 'library_filter_test.dart' show MemoryFilterStore;
@@ -30,6 +34,7 @@ void main() {
       final platform = FakeDrivePlatform()..enabled = false;
       final drive = DriveGateway(platform: platform, client: apiClient());
       final c = MusicController(
+        playbackStats: PlaybackStats(store: MemoryPlaybackStatsStore()),
         libraryFilter: LibraryFilter(store: MemoryFilterStore()),
         gateway: SourceMusicGateway(local: FakeLocalGateway(), drive: drive),
         lyrics: LyricsController(platform: FakeLyricsPlatform()),
@@ -106,6 +111,7 @@ void main() {
     final platform = FakeDrivePlatform();
     final drive = DriveGateway(platform: platform, client: apiClient());
     final c = MusicController(
+      playbackStats: PlaybackStats(store: MemoryPlaybackStatsStore()),
       libraryFilter: LibraryFilter(store: MemoryFilterStore()),
       gateway: SourceMusicGateway(local: FakeLocalGateway(), drive: drive),
       lyrics: LyricsController(platform: FakeLyricsPlatform()),

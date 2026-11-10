@@ -1,3 +1,7 @@
+import 'package:cloud_music/playback_stats/playback_stats.dart';
+
+import 'playback_stats_test.dart' show MemoryPlaybackStatsStore;
+
 import 'package:cloud_music/library_filter/library_filter.dart';
 import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/models.dart';
@@ -25,6 +29,7 @@ Future<MusicController> mountFilter(
   addTearDown(tester.view.resetDevicePixelRatio);
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   final c = MusicController(
+    playbackStats: PlaybackStats(store: MemoryPlaybackStatsStore()),
     gateway: FakeGateway()
       ..initial = LibrarySnapshot(folderName: 'Filter fixture', tracks: tracks),
     libraryFilter: LibraryFilter(store: MemoryFilterStore()),

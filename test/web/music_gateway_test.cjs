@@ -51,6 +51,35 @@ function directory(files, permission = 'granted') {
     async *entries() { for (const [path, file] of Object.entries(files)) yield [path, file]; }};
 }
 const file = name => ({kind: 'file', async getFile() {return {name};}});
+test('playback session changes for replay and repeat, but not resume, buffering or seek', async () => {
+  const h = harness({handle: directory({'one.mp3': file('one.mp3')})});
+  await h.gateway.initialize(); await tick();
+  assert.equal(h.events.at(-1).playbackSessionId, null);
+  await h.gateway.command('play', {id: 'one.mp3'});
+  const first = h.events.at(-1).playbackSessionId;
+  assert.ok(first);
+  await h.gateway.command('pause');
+  await h.gateway.command('togglePlayback');
+  h.audio.listeners.waiting(); h.audio.listeners.playing();
+  await h.gateway.command('seek', {positionMs: 0});
+  assert.equal(h.events.at(-1).playbackSessionId, first);
+  await h.gateway.command('setRepeat', {mode: 'one'});
+  h.audio.paused = true; h.audio.listeners.ended(); await tick();
+  const repeated = h.events.at(-1).playbackSessionId;
+  assert.ok(repeated); assert.notEqual(repeated, first);
+  await h.gateway.command('play', {id: 'one.mp3'});
+  assert.notEqual(h.events.at(-1).playbackSessionId, repeated);
+  h.gateway.dispose();
+});
+test('failed audio preparation never confirms a playback session', async () => {
+  const h = harness({handle: directory({'one.mp3': file('one.mp3')})});
+  await h.gateway.initialize(); await tick();
+  h.audio.play = () => Promise.reject({name: 'NotSupportedError'});
+  await h.gateway.command('play', {id: 'one.mp3'});
+  assert.equal(h.events.at(-1).playbackSessionId, null);
+  assert.equal(h.events.at(-1).isPlaying, false);
+  h.gateway.dispose();
+});
 test('restores granted handle without picker/requestPermission and does not read audio during scan', async () => {
   let reads = 0;
   const root = directory({'One.mp3': {kind:'file', async getFile() {reads++; return {};}}});

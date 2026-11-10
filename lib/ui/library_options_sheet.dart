@@ -16,6 +16,7 @@ Future<LibraryOption?> showLibraryOptions(
     animation: controller,
     builder: (context, _) {
       final s = controller.snapshot;
+      final stats = controller.playbackStats;
       final filter = controller.libraryFilter;
       final hidden = s.tracks.where((t) => filter.hides(t)).length;
       final unknown = s.tracks.where((t) => t.duration <= Duration.zero).length;
@@ -114,6 +115,58 @@ Future<LibraryOption?> showLibraryOptions(
                   Text(
                     filter.notice!,
                     style: TextStyle(color: muted, fontSize: 12),
+                  ),
+                const SettingsSeparator(height: 24),
+                const Text(
+                  '播放统计',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  switch (stats.storageLocation) {
+                    'icloud' => '播放统计保存在 iCloud 应用目录。',
+                    'folder' => '播放统计保存在你选择的文件夹。',
+                    'browser' => '播放统计保存在当前浏览器。',
+                    'local'
+                        when s.sourceKind == 'apple' || stats.canPickFolder =>
+                      '播放统计暂存本机，可选择个人 iCloud Drive 文件夹。',
+                    'local' => '播放统计保存在本机。',
+                    _ when stats.notice != null => '播放统计暂未连接缓存。',
+                    _ => '正在读取播放统计。',
+                  },
+                  key: const Key('playback-stats-storage'),
+                  style: TextStyle(color: muted, fontSize: 12, height: 1.6),
+                ),
+                Text(
+                  '成功开始播放后计为 1 次，暂停后继续不重复计数。可在列表排序中按播放次数排列。',
+                  style: TextStyle(color: muted, fontSize: 12, height: 1.6),
+                ),
+                if (stats.canPickFolder) ...[
+                  SettingsTile(
+                    key: const Key('pick-playback-stats-folder'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(CupertinoIcons.folder_badge_plus),
+                    title: Text(
+                      stats.choosingFolder
+                          ? '正在选择保存文件夹…'
+                          : stats.storageLocation == 'folder'
+                          ? '更换统计保存文件夹'
+                          : '选择个人 iCloud 文件夹',
+                    ),
+                    enabled: stats.canPickFolder && !stats.choosingFolder,
+                    onTap: () async => stats.pickFolder(),
+                  ),
+                  Text(
+                    '在个人 iCloud Drive 中选择或新建“弦泊”文件夹，统计会保存到这里并由系统同步。',
+                    key: const Key('playback-stats-folder-help'),
+                    style: TextStyle(color: muted, fontSize: 12, height: 1.6),
+                  ),
+                ],
+                if (stats.notice != null)
+                  Text(
+                    stats.notice!,
+                    key: const Key('playback-stats-notice'),
+                    style: TextStyle(color: muted, fontSize: 12, height: 1.6),
                   ),
                 if (hasUpdates)
                   SettingsTile(

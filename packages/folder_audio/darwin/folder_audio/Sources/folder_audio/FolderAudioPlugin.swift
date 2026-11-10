@@ -87,6 +87,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private let io = DispatchQueue(label: "cloud_music.index", qos: .utility, attributes: .concurrent)
     private let playbackIO = DispatchQueue(label: "cloud_music.prepare", qos: .userInitiated, attributes: .concurrent)
     private let persistence = DispatchQueue(label: "cloud_music.persistence", qos: .utility)
+    private let playbackStats = PlaybackStatsStorage()
     private let durationIO = DispatchQueue(label: "cloud_music.duration", qos: .utility)
     private var durationToken: Cancellation?
     private var playbackStatusRevision = 0
@@ -106,6 +107,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private var observers: [NSObjectProtocol] = []
     private var remoteTargets: [(MPRemoteCommand, Any)] = []
     private var currentID: String?
+    private var playbackSessionID: String?
+    private var pendingPlaybackSessionID: String?
     private var artwork: Data?
     private var loading = false
     private var scanning = false
@@ -114,10 +117,14 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private var picking = false
     private var lyricsResult: FlutterResult?
     private var lyricsRequest: UUID?
+    private var statsFolderResult: FlutterResult?
+    private var statsFolderRequest: UUID?
     #if os(iOS)
     private var lyricsPicker: UIDocumentPickerViewController?
+    private var statsFolderPicker: UIDocumentPickerViewController?
     #else
     private var lyricsPanel: NSOpenPanel?
+    private var statsFolderPanel: NSOpenPanel?
     #endif
     private var message: String?
     private var wantsPlayback = false
@@ -152,6 +159,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         var result: [String: Any] = ["folderName": library.folderName as Any? ?? NSNull(), "sourceKind": "apple",
             "sourceIdentity": library.sourceIdentity as Any? ?? NSNull(),
             "tracks": library.tracks.map { $0.map }, "currentTrackId": currentID as Any? ?? NSNull(),
+            "playbackSessionId": playbackSessionID as Any? ?? NSNull(),
             "isPlaying": player.timeControlStatus == .playing, "isLoading": loading || (wantsPlayback && player.timeControlStatus == .waitingToPlayAtSpecifiedRate),
             "importRevision": importRevision,
             "isScanning": scanning, "shuffle": library.shuffle,
@@ -161,7 +169,13 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         if let artwork = artwork { result["artwork"] = FlutterStandardTypedData(bytes: artwork) }
         return result
     }
-    private func emit() { sink?(snapshot()); updateNowPlaying() }
+    private func emit() {
+        // 准备成功不等于实际播放；仅首次进入 playing 时确认本轮会话。
+        if player.timeControlStatus == .playing, !loading, let pending = pendingPlaybackSessionID {
+            playbackSessionID = pending; pendingPlaybackSessionID = nil
+        }
+        sink?(snapshot()); updateNowPlaying()
+    }
     private func save() {
         let value = library
         persistence.async {
@@ -177,6 +191,30 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         let args = call.arguments as? [String: Any] ?? [:]
         switch call.method {
+        case "pickPlaybackStatsFolder": pickPlaybackStatsFolder(result); return
+        case "readPlaybackStats", "writePlaybackStats", "playbackStatsDeviceId", "playbackStatsStorageLocation":
+            let method = call.method
+            let value = args["value"] as? String
+            if method == "writePlaybackStats", value == nil {
+                result(FlutterError(code: "invalid_arguments", message: "缺少播放统计内容。", details: nil)); return
+            }
+            persistence.async {
+                do {
+                    let output: String?
+                    switch method {
+                    case "readPlaybackStats": output = try self.playbackStats.read()
+                    case "writePlaybackStats": try self.playbackStats.write(value!); output = nil
+                    case "playbackStatsDeviceId": output = try self.playbackStats.deviceId()
+                    default: output = self.playbackStats.storageLocation
+                    }
+                    DispatchQueue.main.async { result(output) }
+                } catch {
+                    DispatchQueue.main.async {
+                        result(FlutterError(code: "playback_stats_error", message: "无法读取或同步播放统计，已有数据已保留。", details: nil))
+                    }
+                }
+            }
+            return
         case "readLyricsCache", "readLibraryFilter":
             let filter = call.method == "readLibraryFilter"
             persistence.async {
@@ -285,7 +323,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         result?(value)
     }
     private func importLyrics(_ result: @escaping FlutterResult) {
-        guard lyricsResult == nil, !picking else {
+        guard lyricsResult == nil, statsFolderResult == nil, !picking else {
             result(FlutterError(code: "picker_busy", message: "请先关闭当前文件选择器。", details: nil)); return
         }
         lyricsResult = result; lyricsRequest = UUID()
@@ -343,10 +381,71 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     public func detachFromEngine(for registrar: FlutterPluginRegistrar) {
         #if os(iOS)
         lyricsPicker?.dismiss(animated: false)
+        statsFolderPicker?.dismiss(animated: false)
         #else
         lyricsPanel?.cancel(nil)
+        statsFolderPanel?.cancel(nil)
         #endif
         finishLyrics(FlutterError(code: "lyrics_error", message: "应用已关闭，请重试导入。", details: nil))
+        finishPlaybackStatsFolder(FlutterError(code: "playback_stats_error", message: "应用已关闭，请重新选择统计文件夹。", details: nil))
+    }
+
+    private func finishPlaybackStatsFolder(_ value: Any?) {
+        let result = statsFolderResult
+        statsFolderResult = nil; statsFolderRequest = nil
+        #if os(iOS)
+        statsFolderPicker = nil
+        #else
+        statsFolderPanel = nil
+        #endif
+        result?(value)
+    }
+
+    private func pickPlaybackStatsFolder(_ result: @escaping FlutterResult) {
+        guard statsFolderResult == nil, lyricsResult == nil, !picking else {
+            result(FlutterError(code: "picker_busy", message: "请先关闭当前文件选择器。", details: nil)); return
+        }
+        statsFolderResult = result; statsFolderRequest = UUID()
+        #if os(iOS)
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
+        picker.delegate = self; picker.allowsMultipleSelection = false
+        var controller = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }.first(where: { $0.isKeyWindow })?.rootViewController
+        while let presented = controller?.presentedViewController { controller = presented }
+        guard let host = controller, host.viewIfLoaded?.window != nil, !host.isBeingDismissed else {
+            finishPlaybackStatsFolder(FlutterError(code: "no_activity", message: "请返回应用后选择统计文件夹。", details: nil)); return
+        }
+        statsFolderPicker = picker
+        host.present(picker, animated: true)
+        picker.presentationController?.delegate = self
+        #else
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.prompt = "保存播放统计"
+        panel.message = "请选择个人 iCloud Drive 中的“弦泊”文件夹，播放统计将保存为 playback-stats.json。"
+        statsFolderPanel = panel
+        panel.begin { [weak self] response in
+            guard let self = self, self.statsFolderPanel === panel else { return }
+            if response == .OK, let url = panel.url { self.savePlaybackStatsFolder(url) }
+            else { self.finishPlaybackStatsFolder(false) }
+        }
+        #endif
+    }
+
+    private func savePlaybackStatsFolder(_ url: URL) {
+        guard let request = statsFolderRequest else { return }
+        persistence.async {
+            let outcome = Result { try self.playbackStats.selectFolder(url) }
+            DispatchQueue.main.async {
+                guard self.statsFolderRequest == request else { return }
+                switch outcome {
+                case .success(let selected): self.finishPlaybackStatsFolder(selected)
+                case .failure:
+                    self.finishPlaybackStatsFolder(FlutterError(code: "playback_stats_error", message: "无法保存到所选文件夹，原统计和保存位置已保留。请确认文件夹可写后重试。", details: nil))
+                }
+            }
+        }
     }
 
     private static func bookmark(_ url: URL) throws -> Data {
@@ -367,7 +466,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         return (scope, stale ? try bookmark(url) : nil)
     }
     private func pickFolder() {
-        guard !picking, lyricsResult == nil else { return }; picking = true
+        guard !picking, lyricsResult == nil, statsFolderResult == nil else { return }; picking = true
         #if os(iOS)
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder], asCopy: false)
         picker.delegate = self; picker.allowsMultipleSelection = false
@@ -713,6 +812,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     }
 
     private func cancelPlayback() {
+        playbackSessionID = nil; pendingPlaybackSessionID = nil
         playToken?.cancel(); playToken = nil
         asset?.cancelLoading(); asset = nil
         wantsPlayback = false; loading = false; player.pause()
@@ -741,6 +841,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 player.seek(to: .zero) { [weak self] _ in
                     DispatchQueue.main.async {
                         guard let self = self, self.wantsPlayback, self.player.currentItem === item else { return }
+                        self.playbackSessionID = nil; self.pendingPlaybackSessionID = UUID().uuidString
                         self.player.play()
                     }
                 }
@@ -759,6 +860,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         if remember, let current = currentID, current != id { history.append(current) }
         shuffleBag.removeAll { $0 == id }
         cancelPlayback(); currentID = id; loading = true; wantsPlayback = true; message = "正在准备歌曲…"
+        pendingPlaybackSessionID = UUID().uuidString
         let token = Cancellation(); playToken = token
         let request = generation
         emit()
@@ -1030,6 +1132,11 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
 #if os(iOS)
 extension FolderAudioPlugin: UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
     public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        if controller === statsFolderPicker {
+            statsFolderPicker = nil
+            if let url = urls.first { savePlaybackStatsFolder(url) } else { finishPlaybackStatsFolder(false) }
+            return
+        }
         if controller === lyricsPicker {
             if let url = urls.first { loadImportedLyrics(url) } else { finishLyrics(nil) }
             return
@@ -1038,10 +1145,12 @@ extension FolderAudioPlugin: UIDocumentPickerDelegate, UIAdaptivePresentationCon
         if let url = urls.first { select(url) }
     }
     public func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        if controller === lyricsPicker { finishLyrics(nil) } else { picking = false }
+        if controller === statsFolderPicker { finishPlaybackStatsFolder(false) }
+        else if controller === lyricsPicker { finishLyrics(nil) } else { picking = false }
     }
     public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         if presentationController.presentedViewController === lyricsPicker { finishLyrics(nil) }
+        if presentationController.presentedViewController === statsFolderPicker { finishPlaybackStatsFolder(false) }
     }
 }
 #endif

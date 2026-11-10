@@ -24,6 +24,9 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
   final _random = Random();
   bool _disposed = false, _connected = false, _busy = false;
   int _revision = 0, _playRevision = 0;
+  final String _playbackInstance =
+      '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}';
+  String? _playbackSessionId, _pendingPlaybackSessionId;
   String? _account, _error;
   bool? _connectedBeforeAuthorization;
   List<DriveFile> _entries = const [];
@@ -65,6 +68,7 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
         : 'Google Drive · ${_selectedFolder!.name}',
     tracks: _tracks,
     currentTrackId: _playback.id,
+    playbackSessionId: _playbackSessionId,
     isPlaying: _playback.playing,
     isLoading: _playback.loading,
     isScanning: _busy,
@@ -273,6 +277,13 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
     if (_disposed || _ignorePlayback || value.id != _playback.id) return;
     if (value.completed && (_completionHandled || _playback.loading)) return;
     _playback = value;
+    if (value.playing &&
+        !value.loading &&
+        !value.completed &&
+        value.error == null) {
+      _playbackSessionId ??= _pendingPlaybackSessionId;
+      _pendingPlaybackSessionId = null;
+    }
     if (value.duration > Duration.zero) {
       _tracks = _tracks
           .map(
@@ -304,6 +315,8 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
     if (file == null) return;
     if (!file.canDownload) throw const DriveException('文件所有者未允许下载，此歌曲无法播放。');
     final revision = ++_playRevision;
+    _playbackSessionId = null;
+    _pendingPlaybackSessionId = '$_playbackInstance:$revision';
     _ignorePlayback = true;
     _completionHandled = false;
     _error = null;
@@ -328,6 +341,7 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
     } catch (error) {
       if (revision == _playRevision && !_disposed) {
         _ignorePlayback = false;
+        _pendingPlaybackSessionId = null;
         _recordError(error);
         _playback = DrivePlayback(id: id, error: _error);
         _notify();
@@ -379,6 +393,8 @@ class DriveGateway extends ChangeNotifier implements MusicGateway {
 
   Future<void> stop() async {
     _playRevision++;
+    _playbackSessionId = null;
+    _pendingPlaybackSessionId = null;
     _ignorePlayback = true;
     _playback = const DrivePlayback();
     await _platform.stop();

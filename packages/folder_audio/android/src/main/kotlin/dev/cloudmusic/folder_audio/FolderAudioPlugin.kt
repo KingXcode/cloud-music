@@ -9,7 +9,9 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.AtomicFile
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Executors
+import org.json.JSONObject
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -41,16 +43,49 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
     }
     private fun lyricsOperation(call: MethodCall, result: MethodChannel.Result): Boolean {
         when (call.method) {
-            "readLyricsCache", "writeLyricsCache", "readLibraryFilter", "writeLibraryFilter" -> {
+            "playbackStatsStorageLocation" -> { result.success("local"); return true }
+            "playbackStatsDeviceId" -> {
+                val generation = engineGeneration
+                val file = AtomicFile(File(engine.context.filesDir, "playback-device-id.txt"))
+                lyricsIO.execute {
+                    try {
+                        val output = synchronized(lyricsCacheLock) {
+                            check(generation == engineGeneration) { "Engine detached" }
+                            val saved = try { file.openRead().use { readLyricsText(it, 128) } }
+                                catch (_: java.io.FileNotFoundException) { null }
+                            if (saved != null) {
+                                UUID.fromString(saved)
+                                saved
+                            } else {
+                                val value = UUID.randomUUID().toString()
+                                val stream = file.startWrite()
+                                try { stream.write(value.toByteArray(Charsets.UTF_8)); file.finishWrite(stream) }
+                                catch (e: Exception) { file.failWrite(stream); throw e }
+                                value
+                            }
+                        }
+                        main.post { result.success(output) }
+                    } catch (_: Exception) {
+                        main.post { result.error("storage_error", "无法读取或保存播放统计设备标识。", null) }
+                    }
+                }
+                return true
+            }
+            "readLyricsCache", "writeLyricsCache", "readLibraryFilter", "writeLibraryFilter", "readPlaybackStats", "writePlaybackStats" -> {
                 val filter = call.method.endsWith("LibraryFilter")
+                val stats = call.method.endsWith("PlaybackStats")
                 val reading = call.method.startsWith("read")
-                val limit = if (filter) 512 else 2 * 1024 * 1024
+                val limit = if (filter) 512 else if (stats) 8 * 1024 * 1024 else 2 * 1024 * 1024
                 val value = (call.arguments as? Map<*, *>)?.get("value") as? String
                 if (!reading && value == null) {
                     result.error("invalid_arguments", "缺少本地设置或缓存内容。", null); return true
                 }
                 val generation = engineGeneration
-                val cache = if (filter) AtomicFile(File(engine.context.filesDir, "library-filter.json")) else lyricsCache
+                val cache = when {
+                    filter -> AtomicFile(File(engine.context.filesDir, "library-filter.json"))
+                    stats -> AtomicFile(File(engine.context.filesDir, "playback-stats.json"))
+                    else -> lyricsCache
+                }
                 lyricsIO.execute {
                     try {
                         val output: String? = synchronized(lyricsCacheLock) {
@@ -59,7 +94,12 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
                                 try { cache.openRead().use { readLyricsText(it, limit) } }
                                 catch (_: java.io.FileNotFoundException) { null }
                             } else {
-                                val bytes = value!!.toByteArray(Charsets.UTF_8)
+                                val text = if (stats) {
+                                    val existing = try { cache.openRead().use { readLyricsText(it, limit) } }
+                                        catch (_: java.io.FileNotFoundException) { null }
+                                    mergePlaybackStats(existing, value!!)
+                                } else value!!
+                                val bytes = text.toByteArray(Charsets.UTF_8)
                                 require(bytes.size <= limit) { "本地设置或缓存过大。" }
                                 val stream = cache.startWrite()
                                 try { stream.write(bytes); cache.finishWrite(stream) }
@@ -93,6 +133,29 @@ class FolderAudioPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCall
             }
         }
         return false
+    }
+
+    /** 同设备写入也取最大值，较早快照不能把已经保存的次数减回去。 */
+    private fun mergePlaybackStats(existing: String?, incoming: String): String {
+        val counts = mutableMapOf<String, MutableMap<String, Long>>()
+        for (text in listOfNotNull(existing, incoming)) {
+            val document = JSONObject(text)
+            require(document.get("version") == 1) { "Unknown playback stats version" }
+            val tracks = document.getJSONObject("counts")
+            for (track in tracks.keys()) {
+                require(track.isNotEmpty())
+                val merged = counts.getOrPut(track) { mutableMapOf() }
+                val devices = tracks.getJSONObject(track)
+                for (device in devices.keys()) {
+                    require(device.isNotEmpty())
+                    val number = devices.get(device) as? Number ?: error("Invalid play count")
+                    val value = number.toDouble()
+                    require(value.isFinite() && value >= 0 && value <= 9_007_199_254_740_991.0 && value == number.toLong().toDouble())
+                    merged[device] = maxOf(merged[device] ?: 0, number.toLong())
+                }
+            }
+        }
+        return JSONObject().put("version", 1).put("counts", JSONObject(counts.mapValues { JSONObject(it.value) })).toString()
     }
     override fun onAttachedToEngine(b: FlutterPlugin.FlutterPluginBinding) {
         if (lyricsIO.isShutdown) lyricsIO = Executors.newSingleThreadExecutor()

@@ -80,6 +80,7 @@ class LibrarySnapshot {
     this.canScanDevice = false,
     this.tracks = const [],
     this.currentTrackId,
+    this.playbackSessionId,
     this.isPlaying = false,
     this.isLoading = false,
     this.isScanning = false,
@@ -92,6 +93,9 @@ class LibrarySnapshot {
     this.message,
   });
   final String? folderName, currentTrackId, message;
+
+  /// 每次真正开始一轮播放后生成；暂停、缓冲及拖动进度沿用同一标识。
+  final String? playbackSessionId;
   final String sourceKind, sourceIdentity, selectionMode;
   bool get selectsFiles => selectionMode == 'files';
   final bool canPickFiles, canScanDevice;
@@ -118,6 +122,7 @@ class LibrarySnapshot {
         .map((t) => Track.fromMap(Map<Object?, Object?>.from(t)))
         .toList(growable: false),
     currentTrackId: map['currentTrackId'] as String?,
+    playbackSessionId: map['playbackSessionId'] as String?,
     isPlaying: map['isPlaying'] == true,
     isLoading: map['isLoading'] == true,
     isScanning: map['isScanning'] == true,

@@ -14,7 +14,7 @@
 - https://developer.apple.com/documentation/Foundation/NSURL/BookmarkCreationOptions/withSecurityScope
 - https://developer.apple.com/forums/thread/797469
 
-原生 macOS 所需授权包括应用沙盒、用户所选文件的只读访问和应用作用域书签。避免申请读写权限或整个“音乐”文件夹的访问权限。此设计不需要应用自有的 iCloud 容器，但仍须验证最小签名配置下的设备目标，因为旧版归档文档中的选择器配置指引与现代用户自选文件夹访问机制存在差异。
+原生 macOS 使用应用沙盒和应用作用域书签。音乐目录仍创建只读书签；播放统计另通过系统选择器取得独立的读写书签，因此 Runner 的“用户选择文件”沙盒权限为读写，不申请整个“音乐”文件夹的访问权限。用户可以选择个人 iCloud Drive 中的“弦泊”文件夹保存统计，无需开发者 iCloud 容器、Apple Developer 团队或公司证书，详见[播放统计与个人 iCloud 保存](PLAYBACK_STATISTICS.md)。仍须验证最小签名配置下的设备目标，因为旧版归档文档中的选择器配置指引与现代用户自选文件夹访问机制存在差异。
 
 - https://developer.apple.com/library/archive/documentation/Miscellaneous/Reference/EntitlementKeyReference/Chapters/EnablingAppSandbox.html
 

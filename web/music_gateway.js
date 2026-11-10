@@ -53,12 +53,13 @@
       (legacyApplePicker || !('webkitdirectory' in document.createElement('input')));
     audio.preload = 'metadata';
     const state = {folderName: null, sourceKind: 'web', sourceIdentity: newSourceIdentity(), selectionMode: filesOnly ? 'files' : 'folder', canPickFiles: true, importRevision: 0, tracks: [], currentTrackId: null,
-      isPlaying: false, isLoading: false, isScanning: false, shuffle: false,
+      playbackSessionId: null, isPlaying: false, isLoading: false, isScanning: false, shuffle: false,
       positionMs: 0, durationMs: 0, repeatMode: 'off', volume: 1, message: null};
     let root = null, entries = new Map(), disposed = false, initialized = false;
     let playGeneration = 0, scanGeneration = 0, url = null, picking = false, permissionBusy = false;
     let pickerCleanup = null, cancelPreparation = null, cancelPickerOperation = null;
     let selectedFiles = !!filesOnly;
+    let playbackCompleted = false;
     const history = [], shuffleVisited = new Set();
     const snapshot = () => ({...state, tracks: state.tracks.map(t => ({...t}))});
     function save() {
@@ -74,6 +75,8 @@
     }
     function clearAudio() {
       ++playGeneration;
+      state.playbackSessionId = null;
+      playbackCompleted = false;
       cancelPreparation?.();
       if (state.currentTrackId && state.isLoading) status(state.currentTrackId, entries.has(state.currentTrackId) ? 'unloaded' : 'accessRequired');
       audio.pause();
@@ -99,7 +102,14 @@
       state.tracks = state.tracks.map(t => t.id === state.currentTrackId ? {...t, durationMs: state.durationMs} : t);
       emit();
     });
-    on('playing', () => { if (!url) return; state.isPlaying = true; state.isLoading = false; status(state.currentTrackId, 'ready'); emit(); });
+    function markPlaying() {
+      if (!url || audio.paused) return;
+      state.playbackSessionId ||= newSourceIdentity();
+      playbackCompleted = false;
+      state.isPlaying = true; state.isLoading = false;
+      status(state.currentTrackId, 'ready');
+    }
+    on('playing', () => { if (!url) return; markPlaying(); emit(); });
     on('pause', () => { state.isPlaying = false; emit(); });
     on('waiting', () => { if (url && !audio.paused) { state.isLoading = true; emit(); } });
     on('canplay', () => { if (!url) return; state.isLoading = false; status(state.currentTrackId, 'ready'); emit(); });
@@ -112,6 +122,7 @@
       emit(true);
     });
     on('ended', () => {
+      playbackCompleted = true;
       state.isPlaying = false; state.isLoading = false;
       if (state.repeatMode === 'one') void play(state.currentTrackId, false, true);
       else void advance(1, true);
@@ -418,6 +429,7 @@
         }
         await prepare(() => audio.play());
         if (disposed || generation !== playGeneration) return;
+        markPlaying();
         state.isLoading = false; state.isPlaying = !audio.paused; emit(true);
       } catch (e) {
         if (disposed || generation !== playGeneration) return;
@@ -525,10 +537,12 @@
             if (!audio.paused) { audio.pause(); state.isLoading = false; emit(); return; }
             if (url) {
               const generation = playGeneration;
+              if (playbackCompleted) state.playbackSessionId = null;
               state.isLoading = true; emit();
               try {
                 await prepare(() => audio.play());
                 if (disposed || generation !== playGeneration) return;
+                markPlaying();
                 state.isLoading = false; state.isPlaying = !audio.paused; emit();
               } catch (error) {
                 if (disposed || generation !== playGeneration) return;

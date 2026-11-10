@@ -8,6 +8,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'cupertino_controls.dart';
 
 import '../models.dart';
+import '../library_sort.dart';
 import '../music_controller.dart';
 import 'lyrics_panel.dart';
 import 'macos_window_chrome.dart';
@@ -16,6 +17,7 @@ import 'music_sources_sheet.dart';
 import '../updates/update_controller.dart';
 import 'update_panel.dart';
 import 'library_filter_sheet.dart';
+import 'library_sort_sheet.dart';
 import 'library_options_sheet.dart';
 import 'music_import_sheet.dart';
 
@@ -82,6 +84,9 @@ class _LibraryPageState extends State<_LibraryPage> {
   String? _savedGroup;
   String? _dismissedMessage;
   bool _openingImport = false, _openingSources = false;
+  bool _openingSort = false;
+  LibrarySort _sort = LibrarySort.original;
+  bool _sortDescending = false;
 
   @override
   void dispose() {
@@ -112,6 +117,27 @@ class _LibraryPageState extends State<_LibraryPage> {
       await showLibraryFilter(context, widget.controller);
     } finally {
       _openingFilter = false;
+    }
+  }
+
+  Future<void> _openSort() async {
+    if (_openingSort) return;
+    _openingSort = true;
+    _searchFocus.unfocus();
+    try {
+      final selection = await showLibrarySort(
+        context,
+        sort: _sort,
+        descending: _sortDescending,
+      );
+      if (!mounted || selection == null) return;
+      setState(() {
+        _sort = selection.sort;
+        _sortDescending = selection.descending;
+      });
+      _scrollTo(0);
+    } finally {
+      _openingSort = false;
     }
   }
 
@@ -216,15 +242,22 @@ class _LibraryPageState extends State<_LibraryPage> {
       final s = c.snapshot;
       final visible = c.libraryFilter.visibleTracks(s.tracks);
       final hidden = s.tracks.length - visible.length;
-      final tracks = visible.where((t) {
-        final matches = '${t.title} ${t.artist} ${t.album} ${t.relativePath}'
-            .toLowerCase()
-            .contains(_query.toLowerCase());
-        return matches &&
-            (_group == null ||
-                (_section == _LibrarySection.albums ? _album(t) : _artist(t)) ==
-                    _group);
-      }).toList();
+      final tracks = sortLibraryTracks(
+        visible.where((t) {
+          final matches = '${t.title} ${t.artist} ${t.album} ${t.relativePath}'
+              .toLowerCase()
+              .contains(_query.toLowerCase());
+          return matches &&
+              (_group == null ||
+                  (_section == _LibrarySection.albums
+                          ? _album(t)
+                          : _artist(t)) ==
+                      _group);
+        }),
+        sort: _sort,
+        descending: _sortDescending,
+        playCount: c.playCount,
+      );
       return PopScope(
         canPop: _section != _LibrarySection.search && _group == null,
         onPopInvokedWithResult: (didPop, result) {
@@ -545,6 +578,32 @@ class _LibraryPageState extends State<_LibraryPage> {
                                                   ),
                                                 ),
                                               ),
+                                              if (_section ==
+                                                      _LibrarySection.songs ||
+                                                  _section ==
+                                                      _LibrarySection.search ||
+                                                  _group != null)
+                                                CupertinoIconControl(
+                                                  key: const Key(
+                                                    'library-sort',
+                                                  ),
+                                                  label:
+                                                      '列表排序：${_sort.label}${_sort == LibrarySort.original
+                                                          ? ''
+                                                          : _sortDescending
+                                                          ? '，降序'
+                                                          : '，升序'}',
+                                                  onPressed: _openSort,
+                                                  foregroundColor:
+                                                      _sort ==
+                                                          LibrarySort.original
+                                                      ? _muted
+                                                      : _accent,
+                                                  icon: const Icon(
+                                                    CupertinoIcons.sort_down,
+                                                    size: 21,
+                                                  ),
+                                                ),
                                               if (hidden > 0)
                                                 CupertinoIconControl(
                                                   key: const Key(
@@ -646,6 +705,7 @@ class _LibraryPageState extends State<_LibraryPage> {
                                           selected:
                                               tracks[i].id == s.currentTrackId,
                                           playing: s.isPlaying,
+                                          playCount: c.playCount(tracks[i]),
                                           onTap: () => c.play(tracks[i]),
                                         ),
                                       ),
@@ -1020,115 +1080,131 @@ class _TrackRow extends StatelessWidget {
     required this.selected,
     required this.playing,
     required this.onTap,
+    this.playCount = 0,
     this.dark = false,
   });
   final Track track;
+  final int playCount;
   final bool selected, playing, dark;
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) {
-    final status = switch (track.availability) {
-      TrackAvailability.ready => ('内容可用', CupertinoIcons.checkmark_circle),
-      TrackAvailability.cloud => ('未下载 · 播放时下载', CupertinoIcons.cloud_download),
-      TrackAvailability.unloaded => ('未读取 · 播放时加载', CupertinoIcons.play_circle),
-      TrackAvailability.accessRequired => ('需重新授权或选择', CupertinoIcons.folder),
-      TrackAvailability.loading => ('正在准备', CupertinoIcons.hourglass),
-      TrackAvailability.offline => ('暂时不可用', CupertinoIcons.wifi_slash),
-      TrackAvailability.missing => ('文件已移走', CupertinoIcons.folder),
-      TrackAvailability.unsupported => (
-        '格式不支持',
-        CupertinoIcons.exclamationmark_circle,
-      ),
-      TrackAvailability.unknown => ('状态待确认', CupertinoIcons.question_circle),
+    final unavailable = switch (track.availability) {
+      TrackAvailability.accessRequired ||
+      TrackAvailability.offline ||
+      TrackAvailability.missing ||
+      TrackAvailability.unsupported => true,
+      _ => false,
     };
     final secondary = dark ? _playerMuted : _muted;
-    return Container(
-      decoration: BoxDecoration(
-        color: selected
-            ? (dark
-                  ? CupertinoColors.white.withValues(alpha: .1)
-                  : const Color(0xFFFCEEF1))
-            : CupertinoColors.transparent,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: CupertinoButton(
-        padding: EdgeInsets.zero,
-        onPressed: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Stack(
-                alignment: Alignment.center,
-                children: [
-                  _Artwork(
-                    size: 50,
-                    seed: track.album.isEmpty ? track.title : track.album,
-                  ),
-                  if (selected && playing)
-                    Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: CupertinoColors.black.withValues(alpha: .35),
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: const Icon(
-                        CupertinoIcons.waveform,
-                        color: CupertinoColors.white,
-                        size: 23,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return Opacity(
+      key: Key('track-availability-${track.id}'),
+      opacity: unavailable ? .45 : 1,
+      child: Container(
+        decoration: BoxDecoration(
+          color: selected
+              ? (dark
+                    ? CupertinoColors.white.withValues(alpha: .1)
+                    : const Color(0xFFFCEEF1))
+              : CupertinoColors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: CupertinoButton(
+          padding: EdgeInsets.zero,
+          onPressed: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Stack(
+                  alignment: Alignment.center,
                   children: [
-                    Text(
-                      track.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: dark
-                            ? CupertinoColors.white
-                            : selected
-                            ? _accent
-                            : _ink,
-                      ),
+                    _Artwork(
+                      size: 50,
+                      seed: track.album.isEmpty ? track.title : track.album,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      _artist(track),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: secondary, fontSize: 12),
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Icon(status.$2, size: 11, color: secondary),
-                        const SizedBox(width: 4),
-                        Flexible(
-                          child: Text(
-                            status.$1,
-                            style: TextStyle(color: secondary, fontSize: 10),
-                          ),
+                    if (selected && playing)
+                      Container(
+                        width: 50,
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: CupertinoColors.black.withValues(alpha: .35),
+                          borderRadius: BorderRadius.circular(7),
                         ),
-                      ],
-                    ),
+                        child: const Icon(
+                          CupertinoIcons.waveform,
+                          color: CupertinoColors.white,
+                          size: 23,
+                        ),
+                      ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                track.duration > Duration.zero ? _time(track.duration) : '—',
-                style: TextStyle(color: secondary, fontSize: 12),
-              ),
-            ],
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        track.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: dark
+                              ? CupertinoColors.white
+                              : selected
+                              ? _accent
+                              : _ink,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _artist(track),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: secondary, fontSize: 12),
+                      ),
+                      if (track.availability == TrackAvailability.loading) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            CupertinoActivityIndicator(
+                              radius: 5,
+                              color: secondary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '正在准备',
+                              style: TextStyle(color: secondary, fontSize: 10),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      track.duration > Duration.zero
+                          ? _time(track.duration)
+                          : '—',
+                      style: TextStyle(color: secondary, fontSize: 12),
+                    ),
+                    if (playCount > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '$playCount 次播放',
+                        style: TextStyle(color: secondary, fontSize: 10),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1879,6 +1955,7 @@ class _Queue extends StatelessWidget {
                     track: s.tracks[i],
                     selected: s.tracks[i].id == s.currentTrackId,
                     playing: s.isPlaying,
+                    playCount: controller.playCount(s.tracks[i]),
                     dark: true,
                     onTap: () => controller.play(s.tracks[i]),
                   ),

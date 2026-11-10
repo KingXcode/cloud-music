@@ -24,10 +24,10 @@ jobs:
       - name: Verify update manifest generator
         run: python3 -m unittest discover -s test/scripts -v
       - run: flutter analyze && flutter test
-      - name: Lyrics browser regression
+      - name: Browser lyrics, filters and playback statistics regression
         env:
           CHROME_EXECUTABLE: /usr/bin/google-chrome
-        run: flutter test --platform chrome test/lyrics_web_test.dart test/library_filter_web_test.dart
+        run: flutter test --platform chrome test/lyrics_web_test.dart test/library_filter_web_test.dart test/playback_stats_web_test.dart
       - run: node --test test/web/*.cjs
       - name: Build for the repository Pages path
         env:

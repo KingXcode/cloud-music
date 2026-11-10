@@ -21,6 +21,8 @@ jobs:
           "$RUNNER_TEMP/cloud-metadata-tests"
           swiftc packages/folder_audio/darwin/folder_audio/Sources/folder_audio/CloudFileMetadata.swift packages/folder_audio/darwin/folder_audio/Sources/folder_audio/LocalAudioDuration.swift test/apple/local_duration_tests.swift -o "$RUNNER_TEMP/cloud-duration-tests"
           "$RUNNER_TEMP/cloud-duration-tests"
+          swiftc packages/folder_audio/darwin/folder_audio/Sources/folder_audio/PlaybackStatsStorage.swift test/apple/playback_stats_tests.swift -o "$RUNNER_TEMP/cloud-playback-stats-tests"
+          "$RUNNER_TEMP/cloud-playback-stats-tests"
       - run: bash scripts/ci_flutter.sh
       - run: flutter precache --ios --macos
       - name: Type-check complete bridge against iOS and macOS SDKs without app packaging

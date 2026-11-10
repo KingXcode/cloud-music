@@ -1,3 +1,7 @@
+import 'package:cloud_music/playback_stats/playback_stats.dart';
+
+import 'playback_stats_test.dart' show MemoryPlaybackStatsStore;
+
 import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/library_filter/filter_store.dart';
 import 'package:cloud_music/library_filter/library_filter.dart';
@@ -45,6 +49,7 @@ void main() {
       final lyrics = LyricsController(platform: platform);
       final gateway = FakeGateway()..initial = snapshot(0);
       final music = MusicController(
+        playbackStats: PlaybackStats(store: MemoryPlaybackStatsStore()),
         gateway: gateway,
         lyrics: lyrics,
         libraryFilter: LibraryFilter(store: _Store()),

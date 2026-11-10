@@ -14,6 +14,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.UUID
 
 internal class AudioEngine private constructor(val context: Context) {
     companion object {
@@ -42,6 +43,8 @@ internal class AudioEngine private constructor(val context: Context) {
     private var folderName: String? = prefs.getString("folder", null)
     private var tracks = mutableListOf<Song>()
     private var current: String? = null
+    private var playbackSessionId: String? = null
+    private var playbackCompleted = false
     private var loading = false
     private var scanning = false
     private var importRevision = 0
@@ -80,6 +83,7 @@ internal class AudioEngine private constructor(val context: Context) {
         "sourceIdentity" to if (deviceLibrary) "mediastore:audio" else tree?.toString(),
         "canScanDevice" to true, "importRevision" to importRevision,
         "tracks" to tracks.map { it.map() }, "currentTrackId" to current, "isPlaying" to isPlaying(),
+        "playbackSessionId" to playbackSessionId,
         "isLoading" to loading, "isScanning" to scanning, "shuffle" to shuffle,
         "positionMs" to position(), "durationMs" to duration(), "repeatMode" to repeat,
         "volume" to volume.toDouble(), "artwork" to artwork, "message" to message)
@@ -253,7 +257,7 @@ internal class AudioEngine private constructor(val context: Context) {
             }
         }
     }
-    private fun stopPlayer(stopService: Boolean = true) { playbackSignal?.cancel(); playGeneration++; prepared = false; loading = false; player?.release(); player = null; resumeAfterFocus = false; abandonFocus(); if (stopService) PlaybackService.stop(context) }
+    private fun stopPlayer(stopService: Boolean = true) { playbackSessionId = null; playbackCompleted = false; playbackSignal?.cancel(); playGeneration++; prepared = false; loading = false; player?.release(); player = null; resumeAfterFocus = false; abandonFocus(); if (stopService) PlaybackService.stop(context) }
     private fun requestFocus(): Boolean {
         return if (Build.VERSION.SDK_INT >= 26) {
             val request = focusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN).setAudioAttributes(attributes)
@@ -278,6 +282,7 @@ internal class AudioEngine private constructor(val context: Context) {
         }
         p.setOnCompletionListener {
             if (token == playGeneration) {
+                playbackCompleted = true
                 if (repeat == "one") { seek(0); resume() }
                 else if (!shuffle && tracks.lastOrNull { it.status !in setOf("missing", "unsupported") }?.id == current && repeat == "off") { pause(); seek(0) }
                 else step(1, automatic = true)
@@ -335,7 +340,11 @@ internal class AudioEngine private constructor(val context: Context) {
             // 先启动媒体前台服务再申请音频焦点，以满足目标 API 35 及以上版本的后台焦点要求。
             PlaybackService.start(context)
             if (!requestFocus()) { message = "其他应用正在使用音频，请稍后重试。"; PlaybackService.stop(context); emit(); return }
-            applyVolume(); player?.start(); message = null; emit()
+            applyVolume(); player?.start()
+            if (isPlaying() && (playbackSessionId == null || playbackCompleted)) {
+                playbackSessionId = UUID.randomUUID().toString(); playbackCompleted = false
+            }
+            message = null; emit()
         } catch (_: Exception) { notice("无法开始后台播放，请返回应用重试。"); PlaybackService.stop(context) }
     }
     fun toggle() { if (isPlaying()) pause() else if (prepared) resume() else (current ?: tracks.firstOrNull()?.id)?.let { play(it) } }

@@ -13,6 +13,7 @@
 - `canPickFiles` / `canScanDevice`：可选布尔，分别表示可提供独立多文件选择 / Android 本机音乐扫描入口
 - `tracks`：映射数组，每项包含 `id`：稳定的字符串标识；`title`：字符串；`artist`：字符串（允许为空）；`album`：字符串（允许为空）；`relativePath`：用于显示的字符串；`status`：`ready`/`cloud`/`unloaded`/`accessRequired`/`loading`/`offline`/`missing`/`unsupported`/`unknown`；`durationMs`：非负整数（未知时为 0）
 - `currentTrackId`：字符串或 null
+- `playbackSessionId`：字符串或 null，仅在一轮播放实际开始后生成。手动重播、自动切歌和单曲循环使用新值；暂停续播、缓冲和拖动进度保留原值。新歌曲准备期间清空，失败不生成，Dart 据此去重统计播放次数。
 - `isPlaying`、`isLoading`、`isScanning`、`shuffle`：布尔值
 - `positionMs`、`durationMs`：非负整数
 - `repeatMode`：`off`/`all`/`one`；`volume`：0–1 的双精度浮点数
@@ -49,6 +50,12 @@ Android 目录树 URI、`mediastore:audio` 或浏览器根目录 UUID。该标�
 ## 资料库显示过滤偏好
 
 `readLibraryFilter` 返回独立 JSON 字符串或 null；`writeLibraryFilter({value: String})` 保存不超过 512 字节的 UTF-8 设置。Apple 和 Android 仅访问本应用私有 `library-filter.json`，串行、原子写入，与曲库、歌词缓存和源音频隔离。格式为 `{"version":1,"enabled":true,"minimumSeconds":30}`；Dart 校验 1–600 秒整数。网页同格式使用独立 localStorage key。该接口不触发来源扫描、元数据读取或音频下载，设置应用于资料库显示，不修改播放队列。
+
+## 播放统计缓存
+
+原生额外支持 `readPlaybackStats`（返回可空 JSON 字符串）、`writePlaybackStats({value: String})`（返回 null）、`playbackStatsDeviceId`（返回本机持久设备标识）及 `playbackStatsStorageLocation`（Apple 返回 `folder` 或 `local`，Android 返回 `local`）。Apple 的 `pickPlaybackStatsFolder` 打开系统目录选择器，成功连接返回 true，取消返回 false；独立保存统计目录的读写书签，不改变音乐来源。
+
+统计 JSON 最大 8 MiB，格式为 `{"version":1,"counts":{"trackKey":{"deviceId":1}}}`。读写在后台串行队列执行并原子保存，同一歌曲和设备分量按最大值合并，损坏缓存保留原件。Apple 使用用户选定的个人文件夹并保留本地副本，无需开发者 iCloud 容器；实际云同步取决于所选位置。Android 使用应用私有目录，网页使用独立浏览器存储。首次连接及同步限制见[播放统计与个人 iCloud 保存](PLAYBACK_STATISTICS.md)。
 
 ## 本机音乐扫描
 

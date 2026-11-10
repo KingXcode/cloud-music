@@ -9,6 +9,7 @@ import 'package:cloud_music/lyrics/lyrics_controller.dart';
 import 'package:cloud_music/music_controller.dart';
 import 'package:cloud_music/ui/music_app.dart';
 import 'package:cloud_music/library_filter/library_filter.dart';
+import 'package:cloud_music/playback_stats/playback_stats.dart';
 
 class FakeController extends ChangeNotifier implements MusicController {
   FakeController(this.snapshot, {LyricsController? lyrics})
@@ -17,6 +18,8 @@ class FakeController extends ChangeNotifier implements MusicController {
   final LyricsController lyrics;
   @override
   final LibraryFilter libraryFilter = LibraryFilter();
+  @override
+  final PlaybackStats playbackStats = PlaybackStats();
   @override
   LibrarySnapshot snapshot;
   @override
@@ -27,6 +30,9 @@ class FakeController extends ChangeNotifier implements MusicController {
   bool get isBusy =>
       snapshot.isLoading || snapshot.isScanning || isLocalImportScanning;
   String? playedId;
+  final playCounts = <String, int>{};
+  @override
+  int playCount(Track track) => playCounts[track.id] ?? 0;
   @override
   bool get canPickFiles => snapshot.canPickFiles;
   @override
@@ -266,7 +272,44 @@ void main() {
     expect(find.byTooltip('返回资料库'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
-  testWidgets('Loading can be cancelled and availability remains explicit', (
+  testWidgets(
+    'Unavailable rows are grey and normal rows have no status label',
+    (tester) async {
+      tester.view.physicalSize = const Size(1100, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final c = FakeController(
+        const LibrarySnapshot(
+          folderName: '我的音乐',
+          tracks: tracks,
+          isLoading: true,
+        ),
+      );
+      await tester.pumpWidget(MusicApp(controller: c));
+      await tester.pump();
+      expect(find.text('内容可用'), findsNothing);
+      expect(find.text('未下载 · 播放时下载'), findsNothing);
+      expect(find.text('暂时不可用'), findsNothing);
+      expect(find.text('文件已移走'), findsNothing);
+      expect(find.text('格式不支持'), findsNothing);
+      for (final track in tracks) {
+        final row = tester.widget<Opacity>(
+          find.byKey(Key('track-availability-${track.id}')),
+        );
+        expect(
+          row.opacity,
+          track.id == 'exact-a' || track.id == 'exact-b' ? 1 : .45,
+        );
+      }
+      await tester.tap(find.text('远方'));
+      expect(c.playedId, 'exact-c');
+      await tester.tap(find.byTooltip('取消加载'));
+      expect(c.cancelled, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('List sorting supports counts, ascending order and search', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1100, 1000);
@@ -274,21 +317,61 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final c = FakeController(
-      const LibrarySnapshot(
-        folderName: '我的音乐',
-        tracks: tracks,
-        isLoading: true,
-      ),
-    );
+      const LibrarySnapshot(folderName: '我的音乐', tracks: tracks),
+    )..playCounts.addAll({'exact-a': 2, 'exact-b': 9});
     await tester.pumpWidget(MusicApp(controller: c));
-    await tester.pump();
-    expect(find.text('内容可用'), findsOneWidget);
-    expect(find.text('未下载 · 播放时下载'), findsOneWidget);
-    expect(find.text('暂时不可用'), findsOneWidget);
-    expect(find.text('文件已移走'), findsOneWidget);
-    expect(find.text('格式不支持'), findsOneWidget);
-    await tester.tap(find.byTooltip('取消加载'));
-    expect(c.cancelled, 1);
+    await tester.pumpAndSettle();
+    expect(find.text('2 次播放'), findsOneWidget);
+    expect(find.text('9 次播放'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sort-playCount')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('apply-library-sort')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('城市夜航')).dy,
+      lessThan(tester.getTopLeft(find.text('山间的风')).dy),
+    );
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('从少到多'));
+    await tester.tap(find.byKey(const Key('apply-library-sort')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('远方')).dy,
+      lessThan(tester.getTopLeft(find.text('山间的风')).dy),
+    );
+    await tester.tap(find.text('搜索').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('library-sort')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Sort controls fit compact screens with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.8;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final c = FakeController(
+      const LibrarySnapshot(folderName: '我的音乐', tracks: tracks),
+    )..playCounts['exact-a'] = 12;
+    await tester.pumpWidget(MusicApp(controller: c));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('library-sort')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sort-playCount')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('apply-library-sort')));
+    await tester.pumpAndSettle();
+    expect(find.text('从多到少'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const Key('apply-library-sort')));
+    await tester.pumpAndSettle();
+    expect(find.text('12 次播放'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
   testWidgets('Provider messages remain visible in the full player', (

@@ -131,6 +131,61 @@ MockClient apiClient({Future<http.Response> Function(http.Request)? list}) =>
     });
 
 void main() {
+  test('playback sessions confirm actual playback and survive pause, buffering and seek', () async {
+    final p = FakeDrivePlatform()..pendingPlay = Completer<void>();
+    final d = DriveGateway(platform: p, client: apiClient());
+    addTearDown(d.dispose);
+    await d.connect();
+    await d.selectFolder();
+    final start = d.command('play', {'id': 'gdrive:one'});
+    await Future<void>.delayed(Duration.zero);
+    expect(d.snapshot.playbackSessionId, isNull);
+    p.events.add(
+      const DrivePlayback(id: 'gdrive:one', playing: true, loading: true),
+    );
+    expect(d.snapshot.playbackSessionId, isNull);
+    p.pendingPlay!.complete();
+    await start;
+    p.pendingPlay = null;
+    final first = d.snapshot.playbackSessionId;
+    expect(first, isNotNull);
+    p.events.add(const DrivePlayback(id: 'gdrive:one'));
+    await d.command('togglePlayback');
+    p.events.add(const DrivePlayback(id: 'gdrive:one', playing: true));
+    p.events.add(
+      const DrivePlayback(id: 'gdrive:one', playing: true, loading: true),
+    );
+    p.events.add(const DrivePlayback(id: 'gdrive:one', playing: true));
+    await d.command('seek', {'positionMs': 0});
+    expect(d.snapshot.playbackSessionId, first);
+    await d.command('setRepeat', {'mode': 'one'});
+    p.events.add(const DrivePlayback(id: 'gdrive:one', completed: true));
+    await Future<void>.delayed(Duration.zero);
+    expect(d.snapshot.playbackSessionId, isNotNull);
+    expect(d.snapshot.playbackSessionId, isNot(first));
+    final repeated = d.snapshot.playbackSessionId;
+    await d.command('play', {'id': 'gdrive:one'});
+    expect(d.snapshot.playbackSessionId, isNot(repeated));
+  });
+
+  test('failed playback preparation does not confirm a session', () async {
+    final p = FakeDrivePlatform();
+    final d = DriveGateway(platform: p, client: apiClient());
+    addTearDown(d.dispose);
+    await d.connect();
+    await d.selectFolder();
+    await d.command('play', {'id': 'gdrive:one'});
+    expect(d.snapshot.playbackSessionId, isNotNull);
+    p.pendingAuthorization = Completer<DriveAuthorization?>();
+    final failed = d.command('play', {'id': 'gdrive:two'});
+    await Future<void>.delayed(Duration.zero);
+    expect(d.snapshot.playbackSessionId, isNull);
+    p.pendingAuthorization!.complete(null);
+    await failed;
+    expect(d.snapshot.playbackSessionId, isNull);
+    expect(d.snapshot.isPlaying, isFalse);
+  });
+
   test(
     'file picking and device scanning always route to the local source',
     () async {

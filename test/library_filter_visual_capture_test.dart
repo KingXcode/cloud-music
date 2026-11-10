@@ -1,3 +1,7 @@
+import 'package:cloud_music/playback_stats/playback_stats.dart';
+
+import 'playback_stats_test.dart' show MemoryPlaybackStatsStore;
+
 // Opt-in rendered visual fixtures; never bundled with the application.
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -45,6 +49,7 @@ void main() {
           .load();
     });
     final c = MusicController(
+      playbackStats: PlaybackStats(store: MemoryPlaybackStatsStore()),
       gateway: FakeGateway()
         ..initial = const LibrarySnapshot(
           folderName: '我的音乐 · 视觉测试',

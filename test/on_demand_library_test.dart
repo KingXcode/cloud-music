@@ -48,8 +48,20 @@ void main() {
     await tester.pumpWidget(MusicApp(controller: controller));
     await tester.pump();
     expect(find.text('正在列出歌曲 · 已显示 2 首'), findsOneWidget);
-    expect(find.text('未读取 · 播放时加载'), findsOneWidget);
-    expect(find.text('需重新授权或选择'), findsOneWidget);
+    expect(find.text('未读取 · 播放时加载'), findsNothing);
+    expect(find.text('需重新授权或选择'), findsNothing);
+    expect(
+      tester
+          .widget<Opacity>(find.byKey(const Key('track-availability-a')))
+          .opacity,
+      1,
+    );
+    expect(
+      tester
+          .widget<Opacity>(find.byKey(const Key('track-availability-b')))
+          .opacity,
+      .45,
+    );
     expect(find.byKey(const Key('source-loading-help')), findsNothing);
     expect(find.text('未下载 · 播放时下载'), findsNothing);
     await tester.tap(find.text('First song'));

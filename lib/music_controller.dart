@@ -9,6 +9,7 @@ import 'drive/drive_gateway.dart';
 import 'models.dart';
 import 'lyrics/lyrics_controller.dart';
 import 'library_filter/library_filter.dart';
+import 'playback_stats/playback_stats.dart';
 
 class MusicController extends ChangeNotifier {
   // 公开的注入参数名有意与私有字段名区分。
@@ -16,15 +17,20 @@ class MusicController extends ChangeNotifier {
     required MusicGateway gateway,
     LyricsController? lyrics,
     LibraryFilter? libraryFilter,
+    PlaybackStats? playbackStats,
   })
     // ignore: prefer_initializing_formals
     : _gateway = gateway,
        lyrics = lyrics ?? LyricsController(),
-       libraryFilter = libraryFilter ?? LibraryFilter() {
+       libraryFilter = libraryFilter ?? LibraryFilter(),
+       playbackStats = playbackStats ?? PlaybackStats() {
     this.libraryFilter.addListener(_filterChanged);
+    this.playbackStats.addListener(_filterChanged);
   }
   final LyricsController lyrics;
   final LibraryFilter libraryFilter;
+  final PlaybackStats playbackStats;
+  int playCount(Track track) => playbackStats.count(_snapshot, track);
   void _filterChanged() {
     if (!_disposed) notifyListeners();
   }
@@ -76,11 +82,14 @@ class MusicController extends ChangeNotifier {
     final revision = _eventRevision;
     unawaited(lyrics.initialize());
     final filterLoaded = libraryFilter.initialize();
+    // iCloud 可能需要等待系统协调，统计缓存不能阻塞曲库和播放操作。
+    unawaited(playbackStats.initialize());
     _subscription = _gateway.snapshots.listen(
       (value) {
         if (_disposed) return;
         _eventRevision++;
         _snapshot = value;
+        playbackStats.observe(value);
         _selectLyricsTrack();
         notifyListeners();
       },
@@ -92,6 +101,7 @@ class MusicController extends ChangeNotifier {
       final initial = await _gateway.initialize();
       if (!_disposed && revision == _eventRevision) {
         _snapshot = initial;
+        playbackStats.observe(initial);
         _selectLyricsTrack();
       }
     } catch (error) {
@@ -132,6 +142,7 @@ class MusicController extends ChangeNotifier {
     _refreshing = true;
     notifyListeners();
     await _command('refresh');
+    await playbackStats.reload();
     if (!_disposed) {
       _refreshing = false;
       notifyListeners();
@@ -192,6 +203,8 @@ class MusicController extends ChangeNotifier {
     _disposed = true;
     libraryFilter.removeListener(_filterChanged);
     libraryFilter.dispose();
+    playbackStats.removeListener(_filterChanged);
+    playbackStats.dispose();
     lyrics.dispose();
     unawaited(_subscription?.cancel());
     unawaited(_gateway.dispose());

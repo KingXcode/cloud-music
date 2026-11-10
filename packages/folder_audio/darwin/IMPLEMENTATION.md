@@ -5,8 +5,8 @@
 ## 存储与访问
 
 - 系统目录选择器打开原始文件夹，不导入或复制歌曲。
-- iOS 使用最小书签，macOS 使用只读安全作用域书签。成功开启安全作用域的调用都有对应的停止调用，准备和播放期间保持作用域有效。
-- 唯一持久化文件是应用自有的 Application Support/CloudMusic/library.json，保存书签、元数据和偏好设置；此实现不持久化音频。
+- iOS 使用最小书签，macOS 的音乐目录使用只读安全作用域书签，播放统计的文件夹使用单独的读写书签。成功开启安全作用域的调用都有对应的停止调用，准备和播放期间保持作用域有效。
+- 应用自有的 Application Support/CloudMusic 保存书签、元数据、偏好设置、歌词缓存和播放统计；此实现不持久化音频。播放统计保留本地原子副本，通过用户选择的个人 iCloud Drive 文件夹保存，无需开发者容器或团队配置，详见 [播放统计与个人 iCloud 保存](../../../docs/PLAYBACK_STATISTICS.md)。
 - 后台协调枚举使用 `.immediatelyAvailableMetadataOnly`，而非 `.withoutChanges`，且不遍历符号链接目录。启动时保留缺失条目。刷新时，只有父目录枚举成功并且直接得到 Cocoa 文件不存在的结果后，才移除引用。发生错误或遇到云端占位文件时保留原条目。已知离线的 iCloud 根目录不能用于确认删除。
 - iCloud 下载由系统管理，仍会占用设备存储。取消操作会停止等待，并使待处理的播放器操作失效，但不会删除或取消 Apple 的缓存下载。
 - 文件提供器协调本身可能阻塞。并发后台任务和代次令牌允许新的播放或来源请求继续执行，同时拒绝过期结果。
@@ -17,7 +17,7 @@ AVPlayer 使用原始 URL，并通过文件呈现器处理外部写入、移动�
 
 ## 打包
 
-SwiftPM 处理 PrivacyInfo.xcprivacy，CocoaPods 将其作为资源包包含。此实现不使用 UserDefaults、文件时间戳、磁盘空间 API 或其他需要声明使用理由的 API；隐私清单声明不收集数据，也不进行追踪。如新增 SDK 或 API，须重新评估。macOS Runner 具有应用沙盒、用户所选文件只读访问和应用作用域书签授权。iOS Runner 启用了后台音频模式，未申请应用自有 iCloud 容器授权。
+SwiftPM 处理 PrivacyInfo.xcprivacy，CocoaPods 将其作为资源包包含。此实现不使用 UserDefaults、文件时间戳、磁盘空间 API 或其他需要声明使用理由的 API；隐私清单声明不收集数据，也不进行追踪。如新增 SDK 或 API，须重新评估。macOS Runner 具有应用沙盒、用户所选文件读写访问和应用作用域书签授权。iOS Runner 启用了后台音频模式。不申请开发者 iCloud 容器授权，也不配置或使用开发团队。
 
 ## 验证状态
 
