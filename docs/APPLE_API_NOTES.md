@@ -31,7 +31,7 @@
 
 ## 播放
 
-使用 AVURLAsset/AVPlayerItem/AVPlayer 访问原始 URL。扩展名识别仅用于发现候选文件，不能保证编解码器支持。应检查可播放性及播放项状态，将不支持或损坏与文件缺失分别报告。所选歌曲可用后，再按需加载内嵌元数据和封面，避免索引时下载每首歌曲。
+使用 AVURLAsset/AVPlayerItem/AVPlayer 访问原始 URL。扩展名识别仅用于发现候选文件，不能保证编解码器支持。应检查可播放性及播放项状态，将不支持或损坏与文件缺失分别报告。所选歌曲可用后，再按需加载内嵌标签和封面。目录扫描结束后可单独为已确认驻留的歌曲读取时长，使用独立后台串行队列、读取前状态复核及超时，不创建播放器、不主动请求未下载文件。
 
 - https://developer.apple.com/documentation/avfoundation/avplayer
 - https://developer.apple.com/documentation/avfoundation/avurlasset/audiovisualcontenttypes

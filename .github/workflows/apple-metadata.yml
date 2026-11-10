@@ -19,6 +19,8 @@ jobs:
         run: |
           swiftc packages/folder_audio/darwin/folder_audio/Sources/folder_audio/CloudFileMetadata.swift test/apple/metadata_tests.swift -o "$RUNNER_TEMP/cloud-metadata-tests"
           "$RUNNER_TEMP/cloud-metadata-tests"
+          swiftc packages/folder_audio/darwin/folder_audio/Sources/folder_audio/CloudFileMetadata.swift packages/folder_audio/darwin/folder_audio/Sources/folder_audio/LocalAudioDuration.swift test/apple/local_duration_tests.swift -o "$RUNNER_TEMP/cloud-duration-tests"
+          "$RUNNER_TEMP/cloud-duration-tests"
       - run: bash scripts/ci_flutter.sh
       - run: flutter precache --ios --macos
       - name: Type-check complete bridge against iOS and macOS SDKs without app packaging
@@ -30,5 +32,5 @@ jobs:
           IOS_FRAMEWORK=$(find "$ENGINE/ios-release" -type d -path '*/ios-arm64/Flutter.framework' | head -1)
           test -n "$MAC_FRAMEWORK" && test -n "$IOS_FRAMEWORK"
           SOURCES=packages/folder_audio/darwin/folder_audio/Sources/folder_audio
-          xcrun --sdk macosx swiftc -typecheck -swift-version 5 -target arm64-apple-macosx12.0 -sdk "$(xcrun --sdk macosx --show-sdk-path)" -F "$(dirname "$MAC_FRAMEWORK")" "$SOURCES/CloudFileMetadata.swift" "$SOURCES/FolderAudioPlugin.swift"
-          xcrun --sdk iphoneos swiftc -typecheck -swift-version 5 -target arm64-apple-ios15.0 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -F "$(dirname "$IOS_FRAMEWORK")" "$SOURCES/CloudFileMetadata.swift" "$SOURCES/FolderAudioPlugin.swift"
+          xcrun --sdk macosx swiftc -typecheck -swift-version 5 -target arm64-apple-macosx12.0 -sdk "$(xcrun --sdk macosx --show-sdk-path)" -F "$(dirname "$MAC_FRAMEWORK")" "$SOURCES"/*.swift
+          xcrun --sdk iphoneos swiftc -typecheck -swift-version 5 -target arm64-apple-ios15.0 -sdk "$(xcrun --sdk iphoneos --show-sdk-path)" -F "$(dirname "$IOS_FRAMEWORK")" "$SOURCES"/*.swift

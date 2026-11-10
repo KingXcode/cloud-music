@@ -87,6 +87,8 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private let io = DispatchQueue(label: "cloud_music.index", qos: .utility, attributes: .concurrent)
     private let playbackIO = DispatchQueue(label: "cloud_music.prepare", qos: .userInitiated, attributes: .concurrent)
     private let persistence = DispatchQueue(label: "cloud_music.persistence", qos: .utility)
+    private let durationIO = DispatchQueue(label: "cloud_music.duration", qos: .utility)
+    private var durationToken: Cancellation?
     private var playbackStatusRevision = 0
     private var trackStatusRevisions: [String: Int] = [:]
     private var loaded = false
@@ -246,6 +248,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 library.volume = Float(min(1, max(0, number.doubleValue))); player.volume = library.volume; save()
             }
         case "cancelImport":
+            durationToken?.cancel()
             generation = UUID(); scanToken?.cancel(); scanning = false; pendingFolderImport = false
             message = "已取消本次导入。"
         case "cancelLoading": cancelPlayback(); message = "已取消等待；系统可能继续管理 iCloud 下载。"
@@ -385,6 +388,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
     private func select(_ url: URL) {
         // 确认新书签能够保存之前，不丢弃旧来源。
         let request = UUID(); generation = request
+        durationToken?.cancel()
         scanToken?.cancel(); scanning = false
         cancelPlayback()
         io.async { [weak self] in
@@ -479,6 +483,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         library.tracks = merged.values.sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
     }
     private func scan(removeMissing: Bool, discover: Bool) {
+        durationToken?.cancel()
         guard let bookmark = library.bookmark else { return }
         scanToken?.cancel()
         let token = Cancellation(); scanToken = token
@@ -650,6 +655,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                         if importing && !tracks.isEmpty { self.importRevision += 1 }
                         if !self.loading { self.message = issues ? "部分文件暂时无法确认，已保留记录；列表仅包含系统目前提供的目录信息。" : nil }
                         self.save(); self.emit()
+                        self.fillLocalDurations()
                     }
                 }
             } catch {
@@ -660,6 +666,49 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                     self.save(); self.emit()
                 }
             }
+        }
+    }
+
+    // 目录枚举完成后独立补齐时长，不阻塞首屏或播放，也不重新读取已有时长。
+    private func fillLocalDurations() {
+        durationToken?.cancel()
+        guard let bookmark = library.bookmark else { return }
+        let candidates = library.tracks.filter { LocalAudioDuration.needsRead(status: $0.status, durationMs: $0.durationMs) }
+        guard !candidates.isEmpty else { return }
+        let token = Cancellation(); durationToken = token
+        let request = generation
+        durationIO.async { [weak self] in
+            guard !token.cancelled, let (scope, _) = try? Self.resolve(bookmark) else { return }
+            let root = scope.url.standardizedFileURL
+            var pending: [String: Int] = [:]
+            var lastPublished = Date()
+            func publish() {
+                guard !pending.isEmpty else { return }
+                let batch = pending; pending = [:]; lastPublished = Date()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self, self.generation == request, !token.cancelled else { return }
+                    var changed = false
+                    for i in self.library.tracks.indices {
+                        let track = self.library.tracks[i]
+                        // 点播得到的时长优先；切换来源或刷新后的旧批次不会回写。
+                        if track.durationMs <= 0, let duration = batch[track.id] {
+                            self.library.tracks[i].durationMs = duration; changed = true
+                        }
+                    }
+                    if changed { self.save(); self.emit() }
+                }
+            }
+            for track in candidates {
+                if token.cancelled { break }
+                let url = root.appendingPathComponent(track.relativePath).standardizedFileURL
+                guard url.resolvingSymlinksInPath().path.hasPrefix(root.path.hasSuffix("/") ? root.path : root.path + "/") else { continue }
+                if let duration = LocalAudioDuration.read(url, cancelled: { token.cancelled }) {
+                    pending[track.id] = duration
+                }
+                if pending.count >= 16 || Date().timeIntervalSince(lastPublished) >= 0.4 { publish() }
+            }
+            publish()
+            withExtendedLifetime(scope) {}
         }
     }
 
@@ -831,7 +880,9 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
                 if let title = title, !title.isEmpty { self.library.tracks[i].title = title }
                 if let artist = artist { self.library.tracks[i].artist = artist }
                 if let album = album { self.library.tracks[i].album = album }
-                self.library.tracks[i].durationMs = seconds.isFinite ? max(0, Int(seconds * 1000)) : 0
+                if seconds.isFinite && seconds > 0 && seconds < Double(Int.max / 1000) {
+                    self.library.tracks[i].durationMs = Int(seconds * 1000)
+                }
                 self.artwork = art; self.save(); self.emit()
             }
         }
@@ -967,6 +1018,7 @@ public final class FolderAudioPlugin: NSObject, FlutterPlugin, FlutterStreamHand
         #endif
     }
     deinit {
+        durationToken?.cancel()
         networkMonitor.cancel()
         scanToken?.cancel(); playToken?.cancel(); asset?.cancelLoading()
         if let periodic = periodic { player.removeTimeObserver(periodic) }
