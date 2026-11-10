@@ -10,6 +10,7 @@ import 'cupertino_controls.dart';
 import '../models.dart';
 import '../music_controller.dart';
 import 'lyrics_panel.dart';
+import 'macos_window_chrome.dart';
 import 'music_sources_sheet.dart';
 import '../updates/update_controller.dart';
 import 'update_panel.dart';
@@ -39,6 +40,7 @@ class MusicApp extends StatelessWidget {
       GlobalWidgetsLocalizations.delegate,
     ],
     debugShowCheckedModeBanner: false,
+    builder: (context, child) => MacosWindowChrome(child: child!),
     theme: const CupertinoThemeData(
       brightness: Brightness.light,
       primaryColor: _accent,
@@ -234,16 +236,21 @@ class _LibraryPageState extends State<_LibraryPage> {
         },
         child: CupertinoPageScaffold(
           child: SafeArea(
+            top: !usesMacosWindowChrome,
             child: LayoutBuilder(
               builder: (context, constraints) {
+                final topInset = usesMacosWindowChrome
+                    ? MediaQuery.paddingOf(context).top
+                    : 0.0;
                 final wide = constraints.maxWidth >= 750;
-                final short = constraints.maxHeight < 500;
+                final short = constraints.maxHeight - topInset < 500;
                 return Row(
                   children: [
-                    if (wide) _sidebar(s, short),
+                    if (wide) _sidebar(s, short, topInset: topInset),
                     Expanded(
                       child: Column(
                         children: [
+                          SizedBox(height: topInset),
                           if (widget.updates != null)
                             UpdateBanner(controller: widget.updates!),
                           if (c.usingDrive && c.isLocalImportScanning)
@@ -662,13 +669,22 @@ class _LibraryPageState extends State<_LibraryPage> {
     },
   );
 
-  Widget _sidebar(LibrarySnapshot s, bool short) => Container(
+  Widget _sidebar(
+    LibrarySnapshot s,
+    bool short, {
+    double topInset = 0,
+  }) => Container(
     width: short ? 180 : 224,
     decoration: const BoxDecoration(
       color: _canvas,
       border: Border(right: BorderSide(color: _line)),
     ),
-    padding: EdgeInsets.fromLTRB(20, short ? 14 : 32, 20, short ? 8 : 24),
+    padding: EdgeInsets.fromLTRB(
+      20,
+      topInset + (short ? 14 : 32),
+      20,
+      short ? 8 : 24,
+    ),
     child: LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         child: ConstrainedBox(
